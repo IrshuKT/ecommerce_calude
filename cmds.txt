@@ -1,0 +1,6 @@
+Glass Fittings
+
+contact.ktcs@gmail.com
+
+npm run dev
+uvicorn app.main:app --reload

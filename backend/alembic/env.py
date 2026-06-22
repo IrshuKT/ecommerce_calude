@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import asyncio
 from logging.config import fileConfig
 from sqlalchemy import pool
@@ -6,7 +10,8 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 from app.core.config import settings
 from app.db.session import Base
-from app.models import models  # noqa
+from app.models import models       # noqa
+from app.models import accounting   # noqa
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
