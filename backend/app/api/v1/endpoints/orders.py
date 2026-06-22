@@ -147,3 +147,14 @@ async def get_order(order_number: str, current_user: User = Depends(get_current_
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return order
+
+
+# ── Hook: auto-create invoice on order confirm ──
+async def trigger_invoice_for_order(db, order):
+    """Call this after COD order placement or payment verification."""
+    try:
+        from app.api.v1.endpoints.sales_invoices import create_invoice_from_order
+        invoice = await create_invoice_from_order(db, order)
+        print(f"✓ Invoice {invoice.invoice_number} created for order {order.order_number}")
+    except Exception as e:
+        print(f"Invoice creation failed for {order.order_number}: {e}")
