@@ -1,20 +1,20 @@
 "use client";
-
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 
 export default function RootPage() {
   const router = useRouter();
   const { user } = useAuthStore();
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => { setHydrated(true); }, []);
 
   useEffect(() => {
-    if (user) {
-      router.replace(user.role === "admin" ? "/admin" : "/shop");
-    } else {
-      router.replace("/login");
-    }
-  }, [user, router]);
+    if (!hydrated) return;
+    if (user?.role === "admin") router.replace("/admin");
+    else router.replace("/");
+  }, [hydrated, user, router]);
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>

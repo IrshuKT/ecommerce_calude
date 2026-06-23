@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import PageHeader from "@/components/admin/PageHeader";
 
+
 interface AttrValue { value: string; }
 interface Attr { name: string; display_name: string; values: AttrValue[]; }
 interface Variant {
@@ -98,7 +99,7 @@ export default function AddProductPage() {
 
     setSaving(true);
     try {
-      await api.post("/products/", {
+      const res = await api.post("/products/", {
         name: info.name, short_description: info.short_description,
         description: info.description,
         category_id: info.category_id ? parseInt(info.category_id) : null,
@@ -118,7 +119,7 @@ export default function AddProductPage() {
           weight_kg: v.weight_kg ? parseFloat(v.weight_kg) : null,
         })),
       });
-      router.push("/admin/products");
+      router.push(`/admin/products/${res.data.id}`);
     } catch (e: any) { alert(e.response?.data?.detail || "Failed to save product"); }
     finally { setSaving(false); }
   };
