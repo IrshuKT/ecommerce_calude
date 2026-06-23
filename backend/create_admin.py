@@ -1,0 +1,44 @@
+import asyncio
+import getpass
+
+from sqlalchemy import select
+
+from app.db.session import AsyncSessionLocal
+from app.models.models import User, UserRole
+from app.core.security import get_password_hash
+
+
+async def main():
+    name = input("Name: ")
+    email = input("Email: ")
+    phone = input("Phone: ")
+    password = getpass.getpass("Password: ")
+
+    async with AsyncSessionLocal() as db:
+
+        existing = await db.execute(
+            select(User).where(User.email == email)
+        )
+
+        if existing.scalar_one_or_none():
+            print("User already exists")
+            return
+
+        user = User(
+            name=name,
+            email=email,
+            phone=phone,
+            hashed_password=get_password_hash(password),
+            role=UserRole.admin,
+            is_active=True,
+            is_verified=True,
+        )
+
+        db.add(user)
+        await db.commit()
+
+        print("Admin created successfully")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
