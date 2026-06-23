@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import api from "@/lib/api";
-interface User { user_id: number; name: string; role: string; access_token: string; }
+interface User { user_id: number; name: string; role: string; access_token: string;is_trade_approved?: boolean; }
 interface AuthState {
   user: User | null; isLoading: boolean; error: string | null;
   login: (username: string, password: string) => Promise<void>;

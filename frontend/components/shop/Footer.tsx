@@ -35,12 +35,12 @@ export default function Footer() {
             <h4 style={{ color: "white", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Contact</h4>
             <p style={{ fontSize: 13, margin: "0 0 6px" }}>📞 +91 98765 43210</p>
             <p style={{ fontSize: 13, margin: "0 0 6px" }}>✉️ hello@glassstore.in</p>
-            <p style={{ fontSize: 13, margin: 0 }}>📍 Kerala, India</p>
+            <p style={{ fontSize: 13, margin: 0 }}>📍 Malappuram, Kerala</p>
           </div>
         </div>
         <div style={{ borderTop: "1px solid #334155", paddingTop: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
           <p style={{ fontSize: 12, margin: 0 }}>© 2025 GlassStore. All rights reserved.</p>
-          <p style={{ fontSize: 12, margin: 0 }}>GST Registered | Pan India Delivery</p>
+          <p style={{ fontSize: 12, margin: 0 }}></p>
         </div>
       </div>
     </footer>
