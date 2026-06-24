@@ -168,7 +168,7 @@ export default function Footer() {
         </div>
         <div style={{ borderTop: "1px solid #334155", paddingTop: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
           <p style={{ fontSize: 12, margin: 0 }}>© 2025 GlassStore. All rights reserved.</p>
-          <p style={{ fontSize: 12, margin: 0 }}>GST Registered | Pan India Delivery</p>
+          <p style={{ fontSize: 12, margin: 0 }}></p>
         </div>
       </div>
     </footer>
