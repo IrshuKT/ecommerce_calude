@@ -15,7 +15,7 @@ export default function Footer() {
                   <rect x="10" y="10" width="6" height="6" rx="1" fill="white" opacity="0.9"/>
                 </svg>
               </div>
-              <span style={{ fontSize: 16, fontWeight: 600, color: "white" }}>GlassStore</span>
+              <span style={{ fontSize: 16, fontWeight: 600, color: "white" }}>GlassWebStore</span>
             </div>
             <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>Premium glass materials for homes, offices and projects across India.</p>
           </div>

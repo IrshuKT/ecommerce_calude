@@ -143,7 +143,7 @@ export default function Footer() {
                   <rect x="10" y="10" width="6" height="6" rx="1" fill="white" opacity="0.9"/>
                 </svg>
               </div>
-              <span style={{ fontSize: 16, fontWeight: 600, color: "white" }}>GlassStore</span>
+              <span style={{ fontSize: 16, fontWeight: 600, color: "white" }}>GlassWebStore</span>
             </div>
             <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>Premium glass materials for homes, offices and projects across India.</p>
           </div>
@@ -168,7 +168,7 @@ export default function Footer() {
         </div>
         <div style={{ borderTop: "1px solid #334155", paddingTop: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
           <p style={{ fontSize: 12, margin: 0 }}>© 2025 GlassStore. All rights reserved.</p>
-          <p style={{ fontSize: 12, margin: 0 }}>GST Registered | Pan India Delivery</p>
+          <p style={{ fontSize: 12, margin: 0 }}></p>
         </div>
       </div>
     </footer>

@@ -41,7 +41,7 @@ export default function AdminSidebar() {
             </svg>
           </div>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: "#1e293b" }}>GlassStore</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "#1e293b" }}>GlassWebStore</div>
             <div style={{ fontSize: 11, color: "#94a3b8" }}>Admin Panel</div>
           </div>
         </div>

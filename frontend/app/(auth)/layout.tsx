@@ -14,7 +14,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
         <div style={{ display: "flex", gap: 32, color: "#bae6fd", fontSize: 14 }}>
           <span>🪟 500+ products</span>
-          <span>📦 Pan India delivery</span>
+          <span>📦 All Kerala delivery</span>
           <span>🧾 GST compliant</span>
         </div>
       </div>

@@ -24,6 +24,20 @@ export default function LoginPage() {
         <p style={{ color: "#64748b", fontSize: 14, marginTop: 4 }}>Sign in to your account</p>
       </div>
       {error && <div style={{ marginBottom: 20 }}><Alert message={error} onClose={clearError} /></div>}
+      <Link
+  href="/"
+  style={{
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    color: "#64748b",
+    textDecoration: "none",
+    marginBottom: 24,
+    fontSize: 14,
+  }}
+>
+  ← Back to Home
+</Link>
       <form onSubmit={handleSubmit((d) => login(d.username, d.password))} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <div>
           <label className="label">Email or Phone</label>

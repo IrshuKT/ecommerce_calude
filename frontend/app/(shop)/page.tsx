@@ -91,7 +91,7 @@ export default function HomePage() {
             Premium Glass<br />Materials Online
           </h1>
           <p style={{ fontSize: 18, opacity: 0.9, margin: "0 0 32px", lineHeight: 1.6 }}>
-            Clear glass, mirrors, frosted panels and more. GST invoices with every order. Pan India delivery.
+            Clear glass, mirrors, frosted panels and more. GST invoices with every order. All Kerala delivery.
           </p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
             <Link href="/shop" style={{ padding: "14px 32px", borderRadius: 10, background: "white", color: "#0284c7", fontWeight: 600, fontSize: 16, textDecoration: "none" }}>
@@ -109,7 +109,7 @@ export default function HomePage() {
       {/* Stats bar */}
       <section style={{ background: "#1e293b", padding: "20px 24px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "center", gap: 48, flexWrap: "wrap" }}>
-          {[["🪟", "500+ Products"], ["📦", "Pan India Delivery"], ["🧾", "GST Invoices"], ["✅", "Quality Assured"]].map(([icon, text]) => (
+          {[["🪟", "500+ Products"], ["📦", "All Kerala delivery."], ["🧾", "GST Invoices"], ["✅", "Quality Assured"]].map(([icon, text]) => (
             <div key={text} style={{ display: "flex", alignItems: "center", gap: 8, color: "#94a3b8", fontSize: 14 }}>
               <span style={{ fontSize: 18 }}>{icon}</span>
               <span>{text}</span>
