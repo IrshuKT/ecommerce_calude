@@ -14,6 +14,7 @@ const nav = [
   { label: "Accounting",  href: "/admin/accounting",   icon: "🧾" },
   { label: "Reports",     href: "/admin/reports",      icon: "📊" },
   { label: "Coupons",     href: "/admin/coupons",      icon: "🏷️" },
+  { label: "Settings",    href: "/admin/settings",     icon: "⚙️" },
 ];
 
 export default function AdminSidebar() {

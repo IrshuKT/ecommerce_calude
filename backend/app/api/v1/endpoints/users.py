@@ -139,3 +139,291 @@ async def get_user(user_id: int, db: AsyncSession = Depends(get_db), current_use
     return {"id": user.id, "name": user.name, "email": user.email, "phone": user.phone,
             "role": user.role, "is_active": user.is_active, "is_verified": user.is_verified,
             "is_trade_approved": user.is_trade_approved, "created_at": user.created_at}
+
+
+# ── Profile update ────────────────────────
+
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+@router.patch("/me/profile")
+async def update_profile(
+    payload: ProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if payload.name: current_user.name = payload.name
+    if payload.email: current_user.email = payload.email
+    if payload.phone: current_user.phone = payload.phone
+    return {"message": "Profile updated"}
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+@router.patch("/me/password")
+async def change_password(
+    payload: PasswordChange,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    import bcrypt
+    if not bcrypt.checkpw(payload.current_password.encode(), current_user.hashed_password.encode()):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    current_user.hashed_password = bcrypt.hashpw(payload.new_password.encode(), bcrypt.gensalt()).decode()
+    return {"message": "Password changed successfully"}
+
+
+# ── Profile update ────────────────────────
+
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+@router.patch("/me/profile")
+async def update_profile(
+    payload: ProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if payload.name: current_user.name = payload.name
+    if payload.email: current_user.email = payload.email
+    if payload.phone: current_user.phone = payload.phone
+    return {"message": "Profile updated"}
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+@router.patch("/me/password")
+async def change_password(
+    payload: PasswordChange,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    import bcrypt
+    if not bcrypt.checkpw(payload.current_password.encode(), current_user.hashed_password.encode()):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    current_user.hashed_password = bcrypt.hashpw(payload.new_password.encode(), bcrypt.gensalt()).decode()
+    return {"message": "Password changed successfully"}
+
+
+# ── Profile update ────────────────────────
+
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+@router.patch("/me/profile")
+async def update_profile(
+    payload: ProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if payload.name: current_user.name = payload.name
+    if payload.email: current_user.email = payload.email
+    if payload.phone: current_user.phone = payload.phone
+    return {"message": "Profile updated"}
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+@router.patch("/me/password")
+async def change_password(
+    payload: PasswordChange,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    import bcrypt
+    if not bcrypt.checkpw(payload.current_password.encode(), current_user.hashed_password.encode()):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    current_user.hashed_password = bcrypt.hashpw(payload.new_password.encode(), bcrypt.gensalt()).decode()
+    return {"message": "Password changed successfully"}
+
+
+# ── Profile update ────────────────────────
+
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+@router.patch("/me/profile")
+async def update_profile(
+    payload: ProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if payload.name: current_user.name = payload.name
+    if payload.email: current_user.email = payload.email
+    if payload.phone: current_user.phone = payload.phone
+    return {"message": "Profile updated"}
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+@router.patch("/me/password")
+async def change_password(
+    payload: PasswordChange,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    import bcrypt
+    if not bcrypt.checkpw(payload.current_password.encode(), current_user.hashed_password.encode()):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    current_user.hashed_password = bcrypt.hashpw(payload.new_password.encode(), bcrypt.gensalt()).decode()
+    return {"message": "Password changed successfully"}
+
+
+# ── Profile update ────────────────────────
+
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+@router.patch("/me/profile")
+async def update_profile(
+    payload: ProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if payload.name: current_user.name = payload.name
+    if payload.email: current_user.email = payload.email
+    if payload.phone: current_user.phone = payload.phone
+    return {"message": "Profile updated"}
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+@router.patch("/me/password")
+async def change_password(
+    payload: PasswordChange,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    import bcrypt
+    if not bcrypt.checkpw(payload.current_password.encode(), current_user.hashed_password.encode()):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    current_user.hashed_password = bcrypt.hashpw(payload.new_password.encode(), bcrypt.gensalt()).decode()
+    return {"message": "Password changed successfully"}
+
+
+# ── Profile update ────────────────────────
+
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+@router.patch("/me/profile")
+async def update_profile(
+    payload: ProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if payload.name: current_user.name = payload.name
+    if payload.email: current_user.email = payload.email
+    if payload.phone: current_user.phone = payload.phone
+    return {"message": "Profile updated"}
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+@router.patch("/me/password")
+async def change_password(
+    payload: PasswordChange,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    import bcrypt
+    if not bcrypt.checkpw(payload.current_password.encode(), current_user.hashed_password.encode()):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    current_user.hashed_password = bcrypt.hashpw(payload.new_password.encode(), bcrypt.gensalt()).decode()
+    return {"message": "Password changed successfully"}
+
+
+# ── Profile update ────────────────────────
+
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+@router.patch("/me/profile")
+async def update_profile(
+    payload: ProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if payload.name: current_user.name = payload.name
+    if payload.email: current_user.email = payload.email
+    if payload.phone: current_user.phone = payload.phone
+    return {"message": "Profile updated"}
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+@router.patch("/me/password")
+async def change_password(
+    payload: PasswordChange,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    import bcrypt
+    if not bcrypt.checkpw(payload.current_password.encode(), current_user.hashed_password.encode()):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    current_user.hashed_password = bcrypt.hashpw(payload.new_password.encode(), bcrypt.gensalt()).decode()
+    return {"message": "Password changed successfully"}
+
+
+# ── Profile update ────────────────────────
+
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+@router.patch("/me/profile")
+async def update_profile(
+    payload: ProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if payload.name: current_user.name = payload.name
+    if payload.email: current_user.email = payload.email
+    if payload.phone: current_user.phone = payload.phone
+    return {"message": "Profile updated"}
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+@router.patch("/me/password")
+async def change_password(
+    payload: PasswordChange,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    import bcrypt
+    if not bcrypt.checkpw(payload.current_password.encode(), current_user.hashed_password.encode()):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    current_user.hashed_password = bcrypt.hashpw(payload.new_password.encode(), bcrypt.gensalt()).decode()
+    return {"message": "Password changed successfully"}

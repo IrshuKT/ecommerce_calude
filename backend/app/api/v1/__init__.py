@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import (
+    settings,
     images,
     auth, users, products, categories, cart, orders,
     coupons, payments, admin,
@@ -18,6 +19,7 @@ router.include_router(payments.router,       prefix="/payments",         tags=["
 router.include_router(admin.router,          prefix="/admin",            tags=["Admin"])
 
 # ── Accounting ──────────────────────────
+router.include_router(settings.router,     prefix="/settings",        tags=["Company Settings"])
 router.include_router(images.router,       prefix="/products",        tags=["Product Images"])
 router.include_router(sales_invoices.router, prefix="/invoices",         tags=["Sales Invoices"])
 router.include_router(sales_returns.router,  prefix="/sales-returns",    tags=["Sales Returns"])
