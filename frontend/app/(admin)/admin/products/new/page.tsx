@@ -50,20 +50,42 @@ export default function AddProductPage() {
   const updateAttrValue = (ai: number, vi: number, val: string) => { const a = [...attrs]; a[ai].values[vi].value = val; setAttrs(a); setVariants([]); };
 
   const generateVariants = () => {
-    const validAttrs = attrs.filter(a => a.name && a.values.some(v => v.value.trim()));
-    if (validAttrs.length === 0) { alert("Add at least one attribute with values"); return; }
-    const combos = validAttrs.reduce<Record<string, string>[]>((acc, attr) => {
-      const vals = attr.values.filter(v => v.value.trim());
-      if (acc.length === 0) return vals.map(v => ({ [attr.name]: v.value }));
-      return acc.flatMap(combo => vals.map(v => ({ ...combo, [attr.name]: v.value })));
-    }, []);
-    const prefix = info.name.toUpperCase().replace(/\s+/g, "-").slice(0, 6) || "PROD";
-    setVariants(combos.map((combo, i) => ({
-      sku: `${prefix}-${Object.values(combo).join("-").toUpperCase().replace(/\s+/g, "")}-${String(i + 1).padStart(3, "0")}`,
-      selected_attributes: combo,
-      price: "", trade_price: "", cost_price: "", compare_price: "", stock_qty: "0", weight_kg: "",
-    })));
-  };
+  const validAttrs = attrs.filter(a => 
+    a.name.trim() && a.values.some(v => v.value.trim())
+  );
+  if (validAttrs.length === 0) { 
+    alert("Add at least one attribute with values"); 
+    return; 
+  }
+
+  const combos = validAttrs.reduce<Record<string, string>[]>((acc, attr) => {
+    // Filter out empty values
+    const vals = attr.values.filter(v => v.value.trim() !== "");
+    if (vals.length === 0) return acc;
+    if (acc.length === 0) return vals.map(v => ({ [attr.name]: v.value }));
+    return acc.flatMap(combo => vals.map(v => ({ ...combo, [attr.name]: v.value })));
+  }, []);
+
+  // Filter out any combos with empty values
+  const validCombos = combos.filter(combo => 
+    Object.values(combo).every(v => v.trim() !== "")
+  );
+
+  if (validCombos.length === 0) {
+    alert("No valid combinations found. Check your attribute values.");
+    return;
+  }
+
+  const prefix = info.name.toUpperCase().replace(/\s+/g, "-").slice(0, 6) || "PROD";
+  setVariants(validCombos.map((combo, i) => ({
+    sku: `${prefix}-${Object.values(combo).join("-").toUpperCase().replace(/\s+/g, "").replace(/"/g, "IN")}-${String(i + 1).padStart(3, "0")}`,
+    selected_attributes: combo,
+    price: "", trade_price: "", cost_price: "", compare_price: "", 
+    stock_qty: "0", weight_kg: "",
+  })));
+
+  
+};
 
   const updateVariant = (i: number, key: keyof Variant, val: string) => { const v = [...variants]; (v[i] as any)[key] = val; setVariants(v); };
 

@@ -28,8 +28,8 @@ export default function OrdersPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/orders/?${statusFilter !== "all" ? `status=${statusFilter}` : ""}`);
-      setOrders(Array.isArray(res.data) ? res.data : res.data?.items || []);
+      const res = await api.get(`/orders/admin/all?${statusFilter !== "all" ? `status=${statusFilter}` : ""}`);
+      setOrders(res.data?.items || []);
     } catch { setOrders([]); } finally { setLoading(false); }
   };
 
@@ -44,7 +44,11 @@ export default function OrdersPage() {
   };
 
   const columns = [
-    { key: "order_number", label: "Order #", render: (r: any) => <span style={{ fontWeight: 600, color: "#0284c7" }}>{r.order_number}</span> },
+    { key: "order_number", label: "Order #", render: (r: any) => (
+  <a href={`/admin/orders/${r.order_number}`} style={{ fontWeight: 600, color: "#0284c7", textDecoration: "none" }}>
+    {r.order_number}
+  </a>
+)},
     { key: "shipping_name", label: "Customer" },
     { key: "shipping_city", label: "City" },
     { key: "total_amount", label: "Amount", render: (r: any) => <span style={{ fontWeight: 600 }}>₹{parseFloat(r.total_amount).toLocaleString("en-IN")}</span> },

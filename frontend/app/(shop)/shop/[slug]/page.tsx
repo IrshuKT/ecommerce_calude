@@ -43,16 +43,19 @@ export default function ProductDetailPage() {
 
   // Find matching variant when attributes change
   useEffect(() => {
-    if (!product?.variants) return;
-    if (product.attributes?.length === 0) {
-      setSelectedVariant(product.variants[0] || null);
-      return;
-    }
-    const match = product.variants.find((v: any) =>
-      Object.entries(selectedAttrs).every(([k, val]) => v.selected_attributes?.[k] === val)
-    );
-    setSelectedVariant(match || null);
-  }, [selectedAttrs, product]);
+  if (!product?.variants) return;
+  if (product.attributes?.length === 0) {
+    setSelectedVariant(product.variants[0] || null);
+    return;
+  }
+  // Only match variants that have ALL attributes filled
+  const match = product.variants.find((v: any) => {
+    const attrKeys = Object.keys(selectedAttrs);
+    if (attrKeys.length === 0) return false;
+    return attrKeys.every(k => v.selected_attributes?.[k] === selectedAttrs[k]);
+  });
+  setSelectedVariant(match || null);
+}, [selectedAttrs, product]);
 
   const effectivePrice = () => {
     if (!selectedVariant) return null;
@@ -160,37 +163,37 @@ export default function ProductDetailPage() {
 </div>
 
           {/* Attributes */}
-          {product.attributes?.map((attr: any) => (
-            <div key={attr.id} style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 13, fontWeight: 600, color: "#475569", display: "block", marginBottom: 8 }}>
-                {attr.display_name}:
-                <span style={{ fontWeight: 700, color: "#1e293b", marginLeft: 6 }}>{selectedAttrs[attr.name]}</span>
-              </label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {attr.values.map((val: any) => {
-                  const isSelected = selectedAttrs[attr.name] === val.value;
-                  // Check if this value has a matching active variant
-                  const hasVariant = product.variants?.some((v: any) =>
-                    v.selected_attributes?.[attr.name] === val.value
-                  );
-                  return (
-                    <button key={val.id} onClick={() => setSelectedAttrs({ ...selectedAttrs, [attr.name]: val.value })}
-                      disabled={!hasVariant}
-                      style={{
-                        padding: "7px 16px", borderRadius: 8, fontSize: 14, cursor: hasVariant ? "pointer" : "not-allowed",
-                        border: isSelected ? "2px solid #0284c7" : "1px solid #e2e8f0",
-                        background: isSelected ? "#eff6ff" : hasVariant ? "white" : "#f8fafc",
-                        color: isSelected ? "#0284c7" : hasVariant ? "#475569" : "#cbd5e1",
-                        fontWeight: isSelected ? 600 : 400,
-                        transition: "all 0.15s",
-                      }}>
-                      {val.value}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+          {product.attributes?.filter((attr: any) => attr.values?.length > 0).map((attr: any) => (
+  <div key={attr.id} style={{ marginBottom: 20 }}>
+    <label style={{ fontSize: 13, fontWeight: 600, color: "#475569", display: "block", marginBottom: 8 }}>
+      {attr.display_name}:
+      <span style={{ fontWeight: 700, color: "#1e293b", marginLeft: 6 }}>{selectedAttrs[attr.name]}</span>
+    </label>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+      {attr.values.filter((val: any) => val.value?.trim()).map((val: any) => {
+        const isSelected = selectedAttrs[attr.name] === val.value;
+        const hasVariant = product.variants?.some((v: any) =>
+          v.selected_attributes?.[attr.name] === val.value &&
+          Object.keys(v.selected_attributes).length > 0
+        );
+        return (
+          <button key={val.id} onClick={() => setSelectedAttrs({ ...selectedAttrs, [attr.name]: val.value })}
+            disabled={!hasVariant}
+            style={{
+              padding: "7px 16px", borderRadius: 8, fontSize: 14,
+              cursor: hasVariant ? "pointer" : "not-allowed",
+              border: isSelected ? "2px solid #0284c7" : "1px solid #e2e8f0",
+              background: isSelected ? "#eff6ff" : hasVariant ? "white" : "#f8fafc",
+              color: isSelected ? "#0284c7" : hasVariant ? "#475569" : "#cbd5e1",
+              fontWeight: isSelected ? 600 : 400, transition: "all 0.15s",
+            }}>
+            {val.value}
+          </button>
+        );
+      })}
+    </div>
+  </div>
+))}
 
           {/* Custom dimensions for per_sqft */}
           {product.price_type === "per_sqft" && (

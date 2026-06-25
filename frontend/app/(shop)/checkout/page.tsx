@@ -58,6 +58,8 @@ export default function CheckoutPage() {
     line1: "", line2: "", city: "", state: "Kerala", state_code: "32", pincode: "",
   });
   const [savingAddr, setSavingAddr] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   const subtotal = total();
   const gstAmount = subtotal * 0.18;
@@ -95,12 +97,24 @@ export default function CheckoutPage() {
     if (!selectedAddressId) { alert("Please select a delivery address"); return; }
     setPlacing(true);
     try {
+      // Step 1: Sync frontend cart to backend DB
+      try { await api.delete("/cart/"); } catch { }
+      for (const item of items) {
+        await api.post("/cart/", {
+          variant_id: item.variant_id,
+          quantity: item.quantity,
+          custom_width_ft: item.custom_width_ft || null,
+          custom_height_ft: item.custom_height_ft || null,
+        });
+      }
+
+      // Step 2: Place order
       const res = await api.post("/orders/", {
         address_id: selectedAddressId,
         payment_method: paymentMethod,
       });
+
       const orderNumber = res.data.order_number;
-      const orderTotal = res.data.total_amount;
 
       if (paymentMethod === "cod") {
         clearCart();
@@ -108,8 +122,10 @@ export default function CheckoutPage() {
         return;
       }
 
-      // Razorpay
-      const rzRes = await api.post("/payments/create-razorpay-order", { order_number: orderNumber });
+      // Step 3: Razorpay payment
+      const rzRes = await api.post("/payments/create-razorpay-order", {
+        order_number: orderNumber,
+      });
 
       const options = {
         key: rzRes.data.key,
@@ -128,9 +144,11 @@ export default function CheckoutPage() {
             });
             clearCart();
             router.push(`/order-success?order=${orderNumber}&method=razorpay`);
-          } catch { alert("Payment verification failed. Contact support."); }
+          } catch {
+            alert("Payment verification failed. Contact support.");
+          }
         },
-        prefill: { name: user?.name, },
+        prefill: { name: user?.name },
         theme: { color: "#0284c7" },
         modal: { ondismiss: () => setPlacing(false) },
       };
@@ -154,7 +172,6 @@ export default function CheckoutPage() {
 
   return (
     <>
-      {/* Load Razorpay SDK */}
       <script src="https://checkout.razorpay.com/v1/checkout.js" async />
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 24px" }}>
@@ -184,7 +201,6 @@ export default function CheckoutPage() {
               <div className="card" style={{ padding: 24 }}>
                 <h2 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 20px" }}>Delivery Address</h2>
 
-                {/* Existing addresses */}
                 {addresses.map(addr => (
                   <div key={addr.id} onClick={() => setSelectedAddressId(addr.id)}
                     style={{ padding: 16, borderRadius: 8, border: `2px solid ${selectedAddressId === addr.id ? "#0284c7" : "#e2e8f0"}`, marginBottom: 12, cursor: "pointer", background: selectedAddressId === addr.id ? "#f0f9ff" : "white", transition: "all 0.15s" }}>
@@ -206,7 +222,6 @@ export default function CheckoutPage() {
                   </div>
                 ))}
 
-                {/* Add new address */}
                 {!showAddressForm ? (
                   <button onClick={() => setShowAddressForm(true)} style={{ width: "100%", padding: "12px", borderRadius: 8, border: "1px dashed #cbd5e1", background: "white", color: "#64748b", cursor: "pointer", fontSize: 14, marginBottom: 16 }}>
                     + Add New Address
@@ -256,10 +271,12 @@ export default function CheckoutPage() {
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-                      <button onClick={saveAddress} disabled={savingAddr} style={{ padding: "9px 20px", borderRadius: 7, background: "#0284c7", color: "white", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 500 }}>
+                      <button onClick={saveAddress} disabled={savingAddr}
+                        style={{ padding: "9px 20px", borderRadius: 7, background: "#0284c7", color: "white", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 500 }}>
                         {savingAddr ? "Saving..." : "Save Address"}
                       </button>
-                      <button onClick={() => setShowAddressForm(false)} style={{ padding: "9px 16px", borderRadius: 7, border: "1px solid #e2e8f0", background: "white", color: "#64748b", cursor: "pointer", fontSize: 14 }}>
+                      <button onClick={() => setShowAddressForm(false)}
+                        style={{ padding: "9px 16px", borderRadius: 7, border: "1px solid #e2e8f0", background: "white", color: "#64748b", cursor: "pointer", fontSize: 14 }}>
                         Cancel
                       </button>
                     </div>
@@ -281,7 +298,6 @@ export default function CheckoutPage() {
                   <button onClick={() => setStep("address")} style={{ fontSize: 13, color: "#0284c7", background: "none", border: "none", cursor: "pointer" }}>← Change Address</button>
                 </div>
 
-                {/* Delivery summary */}
                 {selectedAddress && (
                   <div style={{ padding: 12, background: "#f8fafc", borderRadius: 8, marginBottom: 20, fontSize: 13, color: "#475569" }}>
                     <span style={{ fontWeight: 500 }}>Delivering to: </span>
@@ -289,7 +305,6 @@ export default function CheckoutPage() {
                   </div>
                 )}
 
-                {/* Payment options */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
                   {[
                     { value: "razorpay", label: "Pay Online", desc: "UPI, Cards, Net Banking, Wallets via Razorpay", icon: "💳" },
@@ -321,7 +336,6 @@ export default function CheckoutPage() {
               <div className="card" style={{ padding: 24 }}>
                 <h2 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 20px" }}>Review & Place Order</h2>
 
-                {/* Address */}
                 <div style={{ marginBottom: 20, padding: 14, background: "#f8fafc", borderRadius: 8 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Delivery Address</span>
@@ -334,7 +348,6 @@ export default function CheckoutPage() {
                   )}
                 </div>
 
-                {/* Payment */}
                 <div style={{ marginBottom: 20, padding: 14, background: "#f8fafc", borderRadius: 8 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Payment Method</span>
@@ -345,7 +358,6 @@ export default function CheckoutPage() {
                   </p>
                 </div>
 
-                {/* Items */}
                 <div style={{ marginBottom: 20 }}>
                   <p style={{ fontSize: 13, fontWeight: 600, color: "#475569", margin: "0 0 10px" }}>Order Items</p>
                   {items.map(item => (
@@ -358,7 +370,9 @@ export default function CheckoutPage() {
 
                 <button onClick={placeOrder} disabled={placing}
                   style={{ width: "100%", padding: "14px", borderRadius: 8, background: placing ? "#64748b" : "#16a34a", color: "white", border: "none", cursor: placing ? "not-allowed" : "pointer", fontSize: 16, fontWeight: 700 }}>
-                  {placing ? "Placing Order..." : paymentMethod === "cod" ? `Place Order — ₹${grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : `Pay ₹${grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`}
+                 {placing ? "Placing Order..." : paymentMethod === "cod"
+  ? `Place Order — ${mounted ? `₹${grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "..."}`
+  : `Pay ${mounted ? `₹${grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "..."}`}
                 </button>
 
                 <p style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", marginTop: 10 }}>
@@ -387,13 +401,16 @@ export default function CheckoutPage() {
             ))}
             <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 12, marginTop: 4 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#475569", marginBottom: 6 }}>
-                <span>Subtotal</span><span>₹{subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                <span>Subtotal</span>
+                <span>{mounted ? `₹${subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "..."}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#475569", marginBottom: 10 }}>
-                <span>GST (18%)</span><span>₹{gstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                <span>GST (18%)</span>
+                <span>{mounted ? `₹${gstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "..."}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 700, color: "#1e293b" }}>
-                <span>Total</span><span>₹{grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                <span>Total</span>
+                <span>{mounted ? `₹${grandTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "..."}</span>
               </div>
             </div>
           </div>

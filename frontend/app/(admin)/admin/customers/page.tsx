@@ -5,7 +5,7 @@ import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
 
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState([]);
+  const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -14,7 +14,11 @@ export default function CustomersPage() {
 
   const columns = [
     { key: "id", label: "ID", width: 60 },
-    { key: "name", label: "Name", render: (r: any) => <span style={{ fontWeight: 500 }}>{r.name}</span> },
+    { key: "name", label: "Name", render: (r: any) => (
+  <a href={`/admin/customers/${r.id}`} style={{ fontWeight: 500, color: "#0284c7", textDecoration: "none" }}>
+    {r.name}
+  </a>
+)},
     { key: "email", label: "Email" },
     { key: "phone", label: "Phone" },
     { key: "role", label: "Role", render: (r: any) => <span style={{ textTransform: "capitalize", fontSize: 12, background: r.role === "admin" ? "#ede9fe" : "#f1f5f9", color: r.role === "admin" ? "#7c3aed" : "#475569", padding: "2px 8px", borderRadius: 4 }}>{r.role}</span> },

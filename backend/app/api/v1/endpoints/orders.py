@@ -7,12 +7,14 @@ from typing import Optional, List
 from decimal import Decimal
 from datetime import datetime
 import random, string
-
+from sqlalchemy import func
 from app.db.session import get_db
 from app.models.models import (Order, OrderItem, OrderTracking, CartItem, ProductVariant,
     Product, Address, Coupon, User, OrderStatus, PaymentMethod, PaymentStatus)
-from app.api.v1.endpoints.auth import get_current_user
+from app.api.v1.endpoints.auth import get_current_user, get_admin_user
 from app.core.config import settings
+from app.models.models import OrderTracking
+
 
 router = APIRouter()
 
@@ -61,10 +63,10 @@ async def place_order(payload: PlaceOrderRequest, current_user: User = Depends(g
             raise HTTPException(status_code=400, detail=f"Insufficient stock for {p.name}")
         if p.price_type == "per_sqft" and item.custom_width_ft and item.custom_height_ft:
             area = (item.custom_width_ft * item.custom_height_ft).quantize(Decimal("0.01"))
-            unit_price = (v.price * area).quantize(Decimal("0.01"))
+            unit_price = (v.retail_price * area).quantize(Decimal("0.01"))
         else:
             area = None
-            unit_price = v.price
+        unit_price = v.retail_price
         line_total = (unit_price * item.quantity).quantize(Decimal("0.01"))
         subtotal += line_total
         order_items_data.append({"variant": v, "product": p, "item": item, "unit_price": unit_price, "line_total": line_total, "area": area})
@@ -129,6 +131,7 @@ async def place_order(payload: PlaceOrderRequest, current_user: User = Depends(g
     for item in cart_items:
         await db.delete(item)
 
+
     return {"order_number": order.order_number, "total_amount": str(order.total_amount), "payment_method": order.payment_method}
 
 
@@ -158,3 +161,107 @@ async def trigger_invoice_for_order(db, order):
         print(f"✓ Invoice {invoice.invoice_number} created for order {order.order_number}")
     except Exception as e:
         print(f"Invoice creation failed for {order.order_number}: {e}")
+
+@router.get("/admin/all")
+async def admin_all_orders(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+    status: Optional[str] = None,
+    page: int = 1,
+    limit: int = 50,
+):
+    from sqlalchemy import select
+    query = select(Order).order_by(Order.created_at.desc())
+    if status:
+        query = query.where(Order.status == status)
+    
+    from sqlalchemy import func
+    count_result = await db.execute(select(func.count()).select_from(query.subquery()))
+    total = count_result.scalar()
+    
+    result = await db.execute(query.offset((page - 1) * limit).limit(limit))
+    orders = result.scalars().all()
+    
+    return {
+        "items": [
+            {
+                "id": o.id,
+                "order_number": o.order_number,
+                "shipping_name": o.shipping_name,
+                "shipping_city": o.shipping_city,
+                "total_amount": str(o.total_amount),
+                "payment_method": o.payment_method,
+                "payment_status": o.payment_status,
+                "status": o.status,
+                "created_at": o.created_at,
+            }
+            for o in orders
+        ],
+        "total": total,
+        "page": page,
+        "limit": limit,
+    }
+
+
+@router.patch("/{order_number}/status")
+async def update_order_status(
+    order_number: str,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    result = await db.execute(
+        select(Order).where(Order.order_number == order_number)
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    old_status = order.status
+    new_status = payload.get("status", order.status)
+    order.status = new_status
+
+    db.add(OrderTracking(
+        order_id=order.id,
+        status=new_status,
+        message=f"Status updated to {new_status}",
+    ))
+
+    # Auto-create invoice when order is confirmed
+    if new_status == "confirmed" and old_status != "confirmed":
+        try:
+            from app.models.accounting import SalesInvoice
+            # Check if invoice already exists
+            inv_check = await db.execute(
+                select(SalesInvoice).where(SalesInvoice.order_id == order.id)
+            )
+            existing_invoice = inv_check.scalar_one_or_none()
+            if not existing_invoice:
+                from app.api.v1.endpoints.sales_invoices import create_invoice_from_order
+                invoice = await create_invoice_from_order(db, order)
+                print(f"✓ Invoice {invoice.invoice_number} created for order {order.order_number}")
+            else:
+                print(f"Invoice already exists for order {order.order_number}")
+        except Exception as e:
+            print(f"Invoice creation failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+    return {"message": "Order status updated", "status": new_status}
+
+
+@router.get("/admin/{order_number}")
+async def admin_get_order(
+    order_number: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    result = await db.execute(
+        select(Order)
+        .options(selectinload(Order.items), selectinload(Order.tracking))
+        .where(Order.order_number == order_number)
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return order

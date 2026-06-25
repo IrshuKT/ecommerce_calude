@@ -47,6 +47,9 @@ async def approve_trade(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     user.is_trade_approved = True
+    user.is_verified = True
+    await db.commit()
+    await db.refresh(user)
     return {"message": f"{user.name} approved as trade customer"}
 
 
@@ -126,3 +129,13 @@ async def delete_address(address_id: int, db: AsyncSession = Depends(get_db), cu
     if not addr:
         raise HTTPException(status_code=404, detail="Address not found")
     await db.delete(addr)
+
+@router.get("/{user_id}")
+async def get_user(user_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_admin_user)):
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"id": user.id, "name": user.name, "email": user.email, "phone": user.phone,
+            "role": user.role, "is_active": user.is_active, "is_verified": user.is_verified,
+            "is_trade_approved": user.is_trade_approved, "created_at": user.created_at}
