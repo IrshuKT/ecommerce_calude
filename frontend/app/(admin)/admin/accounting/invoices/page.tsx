@@ -5,6 +5,7 @@ import api from "@/lib/api";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
 import { useSettings } from "@/hooks/useSettings";
+import { ManualInvoiceButton } from "./InvoiceActions";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8000";
 
@@ -75,10 +76,14 @@ export default function InvoicesPage() {
 
   return (
     <div style={{ padding: 32 }}>
-      <PageHeader title="Sales Invoices" subtitle="Auto-generated invoices from orders" />
+      {/* ── header row with button ── */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+        <PageHeader title="Sales Invoices" subtitle="Auto-generated invoices from orders" />
+        <ManualInvoiceButton />   {/* ← use it here */}
+      </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
-        {["all", "confirmed", "partially_paid", "paid", "cancelled"].map(s => (
+        {["all", "draft", "confirmed", "partially_paid", "paid", "cancelled"].map(s => (
           <button key={s} onClick={() => setStatusFilter(s)} style={{
             padding: "6px 14px", borderRadius: 20, fontSize: 13, border: "1px solid", cursor: "pointer",
             borderColor: statusFilter === s ? "#0284c7" : "#e2e8f0",
@@ -91,7 +96,7 @@ export default function InvoicesPage() {
       </div>
 
       <div className="card">
-        <DataTable columns={columns} data={invoices} loading={loading} emptyText="No invoices yet. Invoices are auto-created when orders are placed." keyField="invoice_number" />
+        <DataTable columns={columns} data={invoices} loading={loading} emptyText="No invoices yet." keyField="invoice_number" />
       </div>
     </div>
   );

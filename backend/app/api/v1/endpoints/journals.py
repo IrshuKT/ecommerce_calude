@@ -6,12 +6,268 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import date
 from app.db.session import get_db
-from app.models.accounting import Journal, JournalLine, Account, Vendor
+from app.models.accounting import (Journal, JournalLine, Account, Vendor, VoucherType, SalesInvoice,SalesReturn,ReceiptVoucher,
+Purchase,PurchaseReturn,PaymentVoucher)
 from app.models.models import User
 from app.api.v1.endpoints.auth import get_admin_user
 
 
 router = APIRouter()
+
+
+class OpeningBalanceEntry(BaseModel):
+    party_type: str         
+    party_id: int
+    amount: float            
+    as_of_date: date
+    narration: Optional[str] = None
+ 
+ 
+class OpeningBalanceBulkPayload(BaseModel):
+    entries: list[OpeningBalanceEntry]
+    as_of_date: date         # global date (can be overridden per entry)
+ 
+ 
+@router.post("/opening-balances", status_code=201)
+async def create_opening_balances(
+    payload: OpeningBalanceBulkPayload,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """
+    Post opening balances for customers and/or vendors.
+ 
+    Customer opening balance journal:
+        DR  1200 Accounts Receivable   (customer_id tagged)
+        CR  3900 Opening Balance Equity
+ 
+    Vendor opening balance journal:
+        DR  3900 Opening Balance Equity
+        CR  2100 Accounts Payable      (vendor_id tagged)
+    """
+    from app.services.journal_service import post_journal
+ 
+    # ── Fetch required accounts ──────────────────────────────────────────────
+    ar_result  = await db.execute(select(Account).where(Account.code == "1200"))
+    ap_result  = await db.execute(select(Account).where(Account.code == "2100"))
+    eq_result  = await db.execute(select(Account).where(Account.code == "3900"))
+ 
+    ar_account = ar_result.scalar_one_or_none()
+    ap_account = ap_result.scalar_one_or_none()
+    eq_account = eq_result.scalar_one_or_none()
+ 
+    if not ar_account:
+        raise HTTPException(400, "Account 1200 (Accounts Receivable) not found")
+    if not ap_account:
+        raise HTTPException(400, "Account 2100 (Accounts Payable) not found")
+    if not eq_account:
+        from app.models.accounting import AccountType
+        eq_account = Account(
+            code="3900",
+            name="Opening Balance Equity",
+            account_type=AccountType.equity,
+            is_system=True,
+            is_active=True,
+        )
+        db.add(eq_account)
+        await db.flush()  # assigns eq_account.id before use below
+ 
+    results = []
+ 
+    for entry in payload.entries:
+        entry_date = entry.as_of_date or payload.as_of_date
+ 
+        if entry.party_type == "customer":
+            # Validate customer exists
+            from app.models.models import User as UserModel
+            cust_r = await db.execute(
+                select(UserModel).where(UserModel.id == entry.party_id)
+            )
+            customer = cust_r.scalar_one_or_none()
+            if not customer:
+                raise HTTPException(400, f"Customer id={entry.party_id} not found")
+ 
+            # Check duplicate
+            dup = await db.execute(
+                select(JournalLine).join(Journal).where(
+                    Journal.voucher_type == VoucherType.opening_balance,
+                    JournalLine.customer_id == entry.party_id,
+                    JournalLine.account_id == ar_account.id,
+                )
+            )
+            if dup.scalar_one_or_none():
+                raise HTTPException(
+                    400,
+                    f"Opening balance already posted for customer '{customer.name}'. "
+                    "Delete the existing journal entry first."
+                )
+ 
+            narration = entry.narration or f"Opening balance - {customer.name}"
+ 
+            lines = [
+                # DR Accounts Receivable (tagged to customer)
+                {
+                    "account_code": ar_account.code,
+                    "debit": entry.amount,
+                    "credit": 0,
+                    "narration": narration,
+                    "customer_id": entry.party_id,
+                },
+                # CR Opening Balance Equity
+                {
+                    "account_code": eq_account.code,
+                    "debit": 0,
+                    "credit": entry.amount,
+                    "narration": narration,
+                },
+            ]
+ 
+        elif entry.party_type == "vendor":
+            # Validate vendor exists
+            vend_r = await db.execute(
+                select(Vendor).where(Vendor.id == entry.party_id)
+            )
+            vendor = vend_r.scalar_one_or_none()
+            if not vendor:
+                raise HTTPException(400, f"Vendor id={entry.party_id} not found")
+ 
+            # Check duplicate
+            dup = await db.execute(
+                select(JournalLine).join(Journal).where(
+                    Journal.voucher_type == VoucherType.opening_balance,
+                    JournalLine.vendor_id == entry.party_id,
+                    JournalLine.account_id == ap_account.id,
+                )
+            )
+            if dup.scalar_one_or_none():
+                raise HTTPException(
+                    400,
+                    f"Opening balance already posted for vendor '{vendor.name}'. "
+                    "Delete the existing journal entry first."
+                )
+ 
+            narration = entry.narration or f"Opening balance - {vendor.name}"
+ 
+            lines = [
+                # DR Opening Balance Equity
+                {
+                    "account_code": eq_account.code,
+                    "debit": entry.amount,
+                    "credit": 0,
+                    "narration": narration,
+                },
+                # CR Accounts Payable (tagged to vendor)
+                {
+                    "account_code": ap_account.code,
+                    "debit": 0,
+                    "credit": entry.amount,
+                    "narration": narration,
+                    "vendor_id": entry.party_id,
+                },
+            ]
+ 
+        else:
+            raise HTTPException(400, f"party_type must be 'customer' or 'vendor', got '{entry.party_type}'")
+ 
+        journal = await post_journal(
+            db=db,
+            voucher_type=VoucherType.opening_balance,
+            voucher_date=entry_date,
+            lines=lines,
+            reference=f"OB-{entry.party_type.upper()}-{entry.party_id}",
+            narration=narration,
+            created_by_id=current_user.id,
+        )
+ 
+        results.append({
+            "party_type": entry.party_type,
+            "party_id": entry.party_id,
+            "amount": entry.amount,
+            "journal_id": journal.id,
+            "voucher_number": journal.voucher_number,
+        })
+ 
+    await db.commit()
+    return {"posted": len(results), "entries": results}
+ 
+ 
+@router.get("/opening-balances")
+async def list_opening_balances(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """List all posted opening balance journals with party info."""
+    from app.models.models import User as UserModel
+ 
+    result = await db.execute(
+        select(Journal)
+        .options(
+            selectinload(Journal.lines).selectinload(JournalLine.account)
+        )
+        .where(Journal.voucher_type == VoucherType.opening_balance)
+        .order_by(Journal.voucher_date.desc())
+    )
+    journals = result.scalars().all()
+ 
+    output = []
+    for j in journals:
+        for line in j.lines:
+            # Only show the AR/AP line (has party tag), skip equity line
+            if line.customer_id:
+                cust = await db.execute(
+                    select(UserModel).where(UserModel.id == line.customer_id)
+                )
+                party = cust.scalar_one_or_none()
+                output.append({
+                    "journal_id": j.id,
+                    "voucher_number": j.voucher_number,
+                    "voucher_date": str(j.voucher_date),
+                    "party_type": "customer",
+                    "party_id": line.customer_id,
+                    "party_name": party.name if party else "Unknown",
+                    "amount": float(line.debit),  # AR is debit
+                    "narration": j.narration,
+                })
+            elif line.vendor_id:
+                vend = await db.execute(
+                    select(Vendor).where(Vendor.id == line.vendor_id)
+                )
+                party = vend.scalar_one_or_none()
+                output.append({
+                    "journal_id": j.id,
+                    "voucher_number": j.voucher_number,
+                    "voucher_date": str(j.voucher_date),
+                    "party_type": "vendor",
+                    "party_id": line.vendor_id,
+                    "party_name": party.name if party else "Unknown",
+                    "amount": float(line.credit),  # AP is credit
+                    "narration": j.narration,
+                })
+ 
+    return output
+ 
+ 
+@router.delete("/opening-balances/{journal_id}", status_code=204)
+async def delete_opening_balance(
+    journal_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """Delete an opening balance journal entry."""
+    result = await db.execute(
+        select(Journal).where(
+            Journal.id == journal_id,
+            Journal.voucher_type == VoucherType.opening_balance,
+        )
+    )
+    journal = result.scalar_one_or_none()
+    if not journal:
+        raise HTTPException(404, "Opening balance journal not found")
+ 
+    await db.delete(journal)
+    await db.commit()
+
+
 
 @router.get("/")
 async def list_journals(
@@ -223,6 +479,8 @@ async def delete_account(
     await db.delete(account)
     await db.commit()
 
+
+
 @router.get("/statement/customer/{customer_id}")
 async def customer_statement(
     customer_id: int,
@@ -231,18 +489,36 @@ async def customer_statement(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_admin_user),
 ):
-    from app.models.accounting import SalesInvoice, SalesReturn, ReceiptVoucher
     from app.models.models import User as UserModel
-
-    # get customer
+ 
     r = await db.execute(select(UserModel).where(UserModel.id == customer_id))
     customer = r.scalar_one_or_none()
     if not customer:
         raise HTTPException(404, "Customer not found")
-
+ 
     transactions = []
-
-    # Sales Invoices
+ 
+    # ── Opening Balance (from JournalLine with customer_id + voucher_type) ───
+    ob_q = (
+        select(JournalLine, Journal)
+        .join(Journal, JournalLine.journal_id == Journal.id)
+        .where(
+            Journal.voucher_type == VoucherType.opening_balance,
+            JournalLine.customer_id == customer_id,
+        )
+    )
+    ob_result = await db.execute(ob_q)
+    for line, journal in ob_result.all():
+        transactions.append({
+            "date": journal.voucher_date,
+            "type": "Opening Balance",
+            "reference": journal.voucher_number,
+            "debit": float(line.debit),
+            "credit": float(line.credit),
+            "status": "posted",
+        })
+ 
+    # ── Sales Invoices ───────────────────────────────────────────────────────
     q = select(SalesInvoice).where(SalesInvoice.customer_id == customer_id)
     if from_date: q = q.where(SalesInvoice.invoice_date >= from_date)
     if to_date:   q = q.where(SalesInvoice.invoice_date <= to_date)
@@ -252,12 +528,12 @@ async def customer_statement(
             "date": inv.invoice_date,
             "type": "Sales Invoice",
             "reference": inv.invoice_number,
-            "debit": float(inv.grand_total),   # customer owes us
+            "debit": float(inv.grand_total),
             "credit": 0,
             "status": inv.status,
         })
-
-    # Sales Returns (credit notes)
+ 
+    # ── Sales Returns ────────────────────────────────────────────────────────
     q = select(SalesReturn).where(SalesReturn.customer_id == customer_id)
     if from_date: q = q.where(SalesReturn.return_date >= from_date)
     if to_date:   q = q.where(SalesReturn.return_date <= to_date)
@@ -268,11 +544,11 @@ async def customer_statement(
             "type": "Sales Return",
             "reference": ret.return_number,
             "debit": 0,
-            "credit": float(ret.total_amount),  # we owe customer
+            "credit": float(ret.total_amount),
             "status": ret.status,
         })
-
-    # Receipts
+ 
+    # ── Receipts ─────────────────────────────────────────────────────────────
     q = select(ReceiptVoucher).where(ReceiptVoucher.customer_id == customer_id)
     if from_date: q = q.where(ReceiptVoucher.receipt_date >= from_date)
     if to_date:   q = q.where(ReceiptVoucher.receipt_date <= to_date)
@@ -283,32 +559,44 @@ async def customer_statement(
             "type": "Receipt",
             "reference": rec.receipt_number,
             "debit": 0,
-            "credit": float(rec.amount),  # payment received
+            "credit": float(rec.amount),
             "status": "received",
         })
-
-    # sort by date
-    transactions.sort(key=lambda x: x["date"])
-
-    # running balance
+ 
+    # ── Sort & running balance ────────────────────────────────────────────────
+    # Opening balance always first, then by date
+    transactions.sort(key=lambda x: (0 if x["type"] == "Opening Balance" else 1, x["date"]))
+ 
     balance = 0.0
     for t in transactions:
         balance += t["debit"] - t["credit"]
         t["balance"] = round(balance, 2)
         t["date"] = str(t["date"])
-
+ 
     return {
-        "customer": {"id": customer.id, "name": customer.name, "email": customer.email, "phone": customer.phone},
+        "customer": {
+            "id": customer.id,
+            "name": customer.name,
+            "email": customer.email,
+            "phone": customer.phone,
+        },
         "transactions": transactions,
         "summary": {
+            "opening_balance": round(
+                sum(t["debit"] - t["credit"] for t in transactions if t["type"] == "Opening Balance"), 2
+            ),
             "total_invoiced": round(sum(t["debit"] for t in transactions if t["type"] == "Sales Invoice"), 2),
-            "total_returns": round(sum(t["credit"] for t in transactions if t["type"] == "Sales Return"), 2),
+            "total_returns":  round(sum(t["credit"] for t in transactions if t["type"] == "Sales Return"), 2),
             "total_received": round(sum(t["credit"] for t in transactions if t["type"] == "Receipt"), 2),
             "closing_balance": round(balance, 2),
         }
     }
-
-
+ 
+ 
+# ══════════════════════════════════════════════════════════════════════════════
+# UPDATED vendor_statement — replace existing one in journals.py
+# ══════════════════════════════════════════════════════════════════════════════
+ 
 @router.get("/statement/vendor/{vendor_id}")
 async def vendor_statement(
     vendor_id: int,
@@ -317,16 +605,34 @@ async def vendor_statement(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_admin_user),
 ):
-    from app.models.accounting import Purchase, PurchaseReturn, PaymentVoucher
-
     r = await db.execute(select(Vendor).where(Vendor.id == vendor_id))
     vendor = r.scalar_one_or_none()
     if not vendor:
         raise HTTPException(404, "Vendor not found")
-
+ 
     transactions = []
-
-    # Purchases
+ 
+    # ── Opening Balance ───────────────────────────────────────────────────────
+    ob_q = (
+        select(JournalLine, Journal)
+        .join(Journal, JournalLine.journal_id == Journal.id)
+        .where(
+            Journal.voucher_type == VoucherType.opening_balance,
+            JournalLine.vendor_id == vendor_id,
+        )
+    )
+    ob_result = await db.execute(ob_q)
+    for line, journal in ob_result.all():
+        transactions.append({
+            "date": journal.voucher_date,
+            "type": "Opening Balance",
+            "reference": journal.voucher_number,
+            "debit": float(line.debit),
+            "credit": float(line.credit),   # AP line is credit
+            "status": "posted",
+        })
+ 
+    # ── Purchases ─────────────────────────────────────────────────────────────
     q = select(Purchase).where(Purchase.vendor_id == vendor_id)
     if from_date: q = q.where(Purchase.purchase_date >= from_date)
     if to_date:   q = q.where(Purchase.purchase_date <= to_date)
@@ -337,11 +643,11 @@ async def vendor_statement(
             "type": "Purchase",
             "reference": p.purchase_number,
             "debit": 0,
-            "credit": float(p.grand_total),  # we owe vendor
+            "credit": float(p.grand_total),
             "status": p.status,
         })
-
-    # Purchase Returns
+ 
+    # ── Purchase Returns ──────────────────────────────────────────────────────
     q = select(PurchaseReturn).where(PurchaseReturn.vendor_id == vendor_id)
     if from_date: q = q.where(PurchaseReturn.return_date >= from_date)
     if to_date:   q = q.where(PurchaseReturn.return_date <= to_date)
@@ -351,12 +657,12 @@ async def vendor_statement(
             "date": ret.return_date,
             "type": "Purchase Return",
             "reference": ret.return_number,
-            "debit": float(ret.total_amount),  # vendor owes us
+            "debit": float(ret.total_amount),
             "credit": 0,
             "status": ret.status,
         })
-
-    # Payments
+ 
+    # ── Payments ──────────────────────────────────────────────────────────────
     q = select(PaymentVoucher).where(PaymentVoucher.vendor_id == vendor_id)
     if from_date: q = q.where(PaymentVoucher.payment_date >= from_date)
     if to_date:   q = q.where(PaymentVoucher.payment_date <= to_date)
@@ -366,26 +672,34 @@ async def vendor_statement(
             "date": pay.payment_date,
             "type": "Payment",
             "reference": pay.payment_number,
-            "debit": float(pay.amount),  # we paid vendor
+            "debit": float(pay.amount),
             "credit": 0,
             "status": "paid",
         })
-
-    transactions.sort(key=lambda x: x["date"])
-
+ 
+    transactions.sort(key=lambda x: (0 if x["type"] == "Opening Balance" else 1, x["date"]))
+ 
     balance = 0.0
     for t in transactions:
         balance += t["credit"] - t["debit"]
         t["balance"] = round(balance, 2)
         t["date"] = str(t["date"])
-
+ 
     return {
-        "vendor": {"id": vendor.id, "name": vendor.name, "code": vendor.code, "phone": vendor.phone},
+        "vendor": {
+            "id": vendor.id,
+            "name": vendor.name,
+            "code": vendor.code,
+            "phone": vendor.phone,
+        },
         "transactions": transactions,
         "summary": {
+            "opening_balance": round(
+                sum(t["credit"] - t["debit"] for t in transactions if t["type"] == "Opening Balance"), 2
+            ),
             "total_purchases": round(sum(t["credit"] for t in transactions if t["type"] == "Purchase"), 2),
-            "total_returns": round(sum(t["debit"] for t in transactions if t["type"] == "Purchase Return"), 2),
-            "total_paid": round(sum(t["debit"] for t in transactions if t["type"] == "Payment"), 2),
+            "total_returns":   round(sum(t["debit"] for t in transactions if t["type"] == "Purchase Return"), 2),
+            "total_paid":      round(sum(t["debit"] for t in transactions if t["type"] == "Payment"), 2),
             "closing_balance": round(balance, 2),
         }
     }

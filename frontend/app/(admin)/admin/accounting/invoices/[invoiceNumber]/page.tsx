@@ -3,8 +3,10 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { useSettings } from "@/hooks/useSettings";
+import { ManualInvoiceButton } from "../InvoiceActions";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8000";
+
 
 export default function InvoiceDetailPage() {
   const settings = useSettings();

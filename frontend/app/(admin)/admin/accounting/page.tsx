@@ -10,6 +10,7 @@ const sections = [
   { title: "Journal Entries",   href: "/admin/accounting/journal",   icon: "📒", desc: "View all double-entry journal entries", color: "#0891b2" },
    { title: "Chart of Accounts",   href: "/admin/accounting/ChartOfAccounts", icon: "📊", desc: "Manage ledger accounts & account groups", color: "#0f766e" },
   { title: "Statements", href: "/admin/accounting/statement", icon: "📋", desc: "Customer & vendor account statements", color: "#0f766e" },
+  { title: "Opening Balances", href: "/admin/accounting/opening-balances", icon: "⚖️", desc: "Customer & vendor Opening Balance", color: "#166534" }
   ];
 
 export default function AccountingPage() {

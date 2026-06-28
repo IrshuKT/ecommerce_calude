@@ -39,7 +39,8 @@ async def post_journal(db, voucher_type, voucher_date, lines, reference=None, na
     await db.flush()
     for line in lines:
         account = await get_account(db, line["account_code"])
-        db.add(JournalLine(journal_id=journal.id, account_id=account.id,
+        db.add(JournalLine(journal_id=journal.id, 
+                           account_id=account.id,
                            debit=Decimal(str(line.get("debit", 0))),
                            credit=Decimal(str(line.get("credit", 0))),
                            narration=line.get("narration"),

@@ -457,3 +457,21 @@ async def get_product_admin(
         for v in product.variants
     ]
 }
+
+@router.get("/variants/search")
+async def search_variants(q: str, limit: int = 8, db=Depends(get_db)):
+    result = await db.execute(
+        select(ProductVariant)
+        .options(selectinload(ProductVariant.product))
+        .join(Product)
+        .where(
+            ProductVariant.is_active == True,
+            (Product.name.ilike(f"%{q}%")) | (ProductVariant.sku.ilike(f"%{q}%"))
+        )
+        .limit(limit)
+    )
+    variants = result.scalars().all()
+    return [{"id": v.id, "sku": v.sku, "retail_price": float(v.retail_price),
+             "stock_qty": v.stock_qty, "selected_attributes": v.selected_attributes,
+             "product": {"name": v.product.name, "gst_rate": float(v.product.gst_rate),
+                         "hsn_code": v.product.hsn_code}} for v in variants]
