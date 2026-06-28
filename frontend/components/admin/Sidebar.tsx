@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { useRouter } from "next/navigation";
+import { useSettings } from "@/app/context/SettingsContext";
 
 const nav = [
   { label: "Dashboard",   href: "/admin",             icon: "▦" },
@@ -21,10 +22,14 @@ export default function AdminSidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
   const router = useRouter();
+  const settings = useSettings();
 
   const handleLogout = () => { logout(); router.replace("/login"); };
 
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8000";
+
   return (
+
     <aside style={{
       width: 240, background: "white", borderRight: "1px solid #e2e8f0",
       display: "flex", flexDirection: "column", height: "100vh",
@@ -32,8 +37,11 @@ export default function AdminSidebar() {
     }}>
       {/* Logo */}
       <div style={{ padding: "20px 20px 16px", borderBottom: "1px solid #e2e8f0" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 30, height: 30, borderRadius: 7, background: "#0284c7", display: "flex", alignItems: "center", justifyContent: "center" }}>
+  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div style={{ width: 36, height: 36, borderRadius: 7, background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+      {settings.logo_url
+        ? <img src={`${API_BASE}${settings.logo_url}`} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+        : <div style={{ width: 30, height: 30, borderRadius: 7, background: "#0284c7", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
               <rect x="2" y="2" width="6" height="6" rx="1" fill="white" opacity="0.9"/>
               <rect x="10" y="2" width="6" height="6" rx="1" fill="white" opacity="0.6"/>
@@ -41,12 +49,16 @@ export default function AdminSidebar() {
               <rect x="10" y="10" width="6" height="6" rx="1" fill="white" opacity="0.9"/>
             </svg>
           </div>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: "#1e293b" }}>GlassWebStore</div>
-            <div style={{ fontSize: 11, color: "#94a3b8" }}>Admin Panel</div>
-          </div>
-        </div>
+      }
+    </div>
+    <div>
+      <div style={{ fontSize: 15, fontWeight: 600, color: "#1e293b" }}>
+        {settings.company_name || "Admin Panel"}
       </div>
+      <div style={{ fontSize: 11, color: "#94a3b8" }}>Admin Panel</div>
+    </div>
+  </div>
+</div>
 
       {/* Nav */}
       <nav style={{ flex: 1, padding: "12px 10px", overflowY: "auto" }}>
@@ -88,5 +100,6 @@ export default function AdminSidebar() {
         </button>
       </div>
     </aside>
+    
   );
 }

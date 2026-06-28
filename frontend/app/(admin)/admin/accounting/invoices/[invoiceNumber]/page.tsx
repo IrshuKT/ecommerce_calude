@@ -2,8 +2,12 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { useSettings } from "@/hooks/useSettings";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8000";
 
 export default function InvoiceDetailPage() {
+  const settings = useSettings();
   const { invoiceNumber } = useParams();
   const router = useRouter();
   const [invoice, setInvoice] = useState<any>(null);
@@ -26,7 +30,7 @@ export default function InvoiceDetailPage() {
   if (!invoice) return <div style={{ padding: 40, textAlign: "center" }}>Invoice not found</div>;
 
   return (
-    <div style={{ padding: 32, maxWidth: 900 }}>
+    <div style={{ padding: 16, maxWidth: 900 }}>
       {/* Actions */}
       <div style={{ display: "flex", gap: 10, marginBottom: 24, justifyContent: "space-between", alignItems: "center" }} className="no-print">
         <button onClick={() => router.back()} style={{ fontSize: 13, color: "#475569", background: "none", border: "none", cursor: "pointer" }}>← Back</button>
@@ -40,35 +44,49 @@ export default function InvoiceDetailPage() {
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 32 }}>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: "#0284c7", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                  <rect x="2" y="2" width="6" height="6" rx="1" fill="white" opacity="0.9"/>
-                  <rect x="10" y="2" width="6" height="6" rx="1" fill="white" opacity="0.6"/>
-                  <rect x="2" y="10" width="6" height="6" rx="1" fill="white" opacity="0.6"/>
-                  <rect x="10" y="10" width="6" height="6" rx="1" fill="white" opacity="0.9"/>
-                </svg>
-              </div>
-              <span style={{ fontSize: 20, fontWeight: 700, color: "#1e293b" }}>GlassStore</span>
-            </div>
-            <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 2px" }}>Kerala, India</p>
-            <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 2px" }}>GSTIN: YOUR-GST-NUMBER</p>
-            <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>📞 +91 98765 43210</p>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        {settings?.logo_url ? (
+          <img src={`${API_BASE}${settings.logo_url}`} alt="Logo"
+            style={{ width: 40, height: 40, objectFit: "contain", borderRadius: 8 }} />
+        ) : (
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: "#0284c7", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <rect x="2" y="2" width="6" height="6" rx="1" fill="white" opacity="0.9"/>
+              <rect x="10" y="2" width="6" height="6" rx="1" fill="white" opacity="0.6"/>
+              <rect x="2" y="10" width="6" height="6" rx="1" fill="white" opacity="0.6"/>
+              <rect x="10" y="10" width="6" height="6" rx="1" fill="white" opacity="0.9"/>
+            </svg>
           </div>
+        )}
+        <span style={{ fontSize: 20, fontWeight: 700, color: "#1e293b" }}>
+          {settings?.company_name || "GlassStore"}
+        </span>
+      </div>
+      <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 2px" }}>
+        {[settings?.address_line1, settings?.city, settings?.state].filter(Boolean).join(", ")}
+      </p>
+      <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 2px" }}>
+        GSTIN: {settings?.gstin || "—"}
+      </p>
+      <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>
+        📞 {settings?.phone || settings?.mobile || "—"}
+      </p>
+    </div>
+
           <div style={{ textAlign: "right" }}>
             <h1 style={{ fontSize: 28, fontWeight: 700, color: "#0284c7", margin: "0 0 8px" }}>TAX INVOICE</h1>
             <p style={{ fontSize: 14, fontWeight: 600, color: "#1e293b", margin: "0 0 4px" }}>#{invoice.invoice_number}</p>
             <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 4px" }}>Date: {new Date(invoice.invoice_date).toLocaleDateString("en-IN", { dateStyle: "long" })}</p>
-            <span style={{ fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 4, background: invoice.status === "paid" ? "#dcfce7" : "#fef9c3", color: invoice.status === "paid" ? "#166534" : "#854d0e", textTransform: "capitalize" }}>
+            {/* <span style={{ fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 4, background: invoice.status === "paid" ? "#dcfce7" : "#fef9c3", color: invoice.status === "paid" ? "#166534" : "#854d0e", textTransform: "capitalize" }}>
               {invoice.status.replace("_", " ")}
-            </span>
+            </span> */}
           </div>
         </div>
 
         {/* Bill To */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 32, padding: 16, background: "#f8fafc", borderRadius: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 34, marginBottom: 16, padding: 16, background: "#f8fafc", borderRadius: 8 }}>
           <div>
-            <p style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.1em" }}>Bill To</p>
+            <p style={{ fontSize: 11, fontWeight: 700, color: "#000000", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.1em" }}>Bill To</p>
             <p style={{ fontSize: 14, fontWeight: 600, color: "#1e293b", margin: "0 0 2px" }}>{invoice.billing_name}</p>
             <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 2px" }}>{invoice.billing_line1}{invoice.billing_line2 ? `, ${invoice.billing_line2}` : ""}</p>
             <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 2px" }}>{invoice.billing_city}, {invoice.billing_state} — {invoice.billing_pincode}</p>
@@ -76,7 +94,7 @@ export default function InvoiceDetailPage() {
             {invoice.customer_gstin && <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0" }}>GSTIN: {invoice.customer_gstin}</p>}
           </div>
           <div>
-            <p style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.1em" }}>Invoice Details</p>
+            <p style={{ fontSize: 11, fontWeight: 700, color: "#000000", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "0.1em" }}>Invoice Details</p>
             <div style={{ fontSize: 13, color: "#64748b" }}>
               <p style={{ margin: "0 0 4px" }}>GST Type: <strong style={{ color: "#1e293b" }}>{invoice.is_interstate ? "Inter-state (IGST)" : "Intra-state (CGST+SGST)"}</strong></p>
               {invoice.order_id && <p style={{ margin: "0 0 4px" }}>Order: <strong style={{ color: "#1e293b" }}>#{invoice.order_id}</strong></p>}
@@ -116,31 +134,31 @@ export default function InvoiceDetailPage() {
         </table>
 
         {/* Totals */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 32 }}>
-          <div style={{ width: 300 }}>
-            {[
-              { label: "Subtotal", value: fmt(invoice.subtotal) },
-              ...(parseFloat(invoice.discount_amount) > 0 ? [{ label: "Discount", value: `− ${fmt(invoice.discount_amount)}` }] : []),
-              { label: "Taxable Amount", value: fmt(invoice.taxable_amount) },
-              ...(parseFloat(invoice.cgst_amount) > 0 ? [{ label: "CGST", value: fmt(invoice.cgst_amount) }] : []),
-              ...(parseFloat(invoice.sgst_amount) > 0 ? [{ label: "SGST", value: fmt(invoice.sgst_amount) }] : []),
-              ...(parseFloat(invoice.igst_amount) > 0 ? [{ label: "IGST", value: fmt(invoice.igst_amount) }] : []),
-              ...(parseFloat(invoice.shipping_charge) > 0 ? [{ label: "Shipping", value: fmt(invoice.shipping_charge) }] : []),
-            ].map(row => (
-              <div key={row.label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13, color: "#475569", borderBottom: "1px solid #f1f5f9" }}>
-                <span>{row.label}</span><span>{row.value}</span>
-              </div>
-            ))}
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 0 0", fontSize: 17, fontWeight: 700, color: "#1e293b", borderTop: "2px solid #1e293b", marginTop: 4 }}>
-              <span>Grand Total</span><span>{fmt(invoice.grand_total)}</span>
-            </div>
-            {parseFloat(invoice.balance_due) > 0 && (
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0 0", fontSize: 13, color: "#dc2626" }}>
-                <span>Balance Due</span><span style={{ fontWeight: 600 }}>{fmt(invoice.balance_due)}</span>
-              </div>
-            )}
-          </div>
-        </div>
+<div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+  <div style={{ width: 280 }}>
+    {[
+      { label: "Subtotal", value: fmt(invoice.subtotal) },
+      ...(parseFloat(invoice.discount_amount) > 0 ? [{ label: "Discount", value: `− ${fmt(invoice.discount_amount)}` }] : []),
+      { label: "Taxable Amount", value: fmt(invoice.taxable_amount) },
+      ...(parseFloat(invoice.cgst_amount) > 0 ? [{ label: "CGST", value: fmt(invoice.cgst_amount) }] : []),
+      ...(parseFloat(invoice.sgst_amount) > 0 ? [{ label: "SGST", value: fmt(invoice.sgst_amount) }] : []),
+      ...(parseFloat(invoice.igst_amount) > 0 ? [{ label: "IGST", value: fmt(invoice.igst_amount) }] : []),
+      ...(parseFloat(invoice.shipping_charge) > 0 ? [{ label: "Shipping", value: fmt(invoice.shipping_charge) }] : []),
+    ].map(row => (
+      <div key={row.label} style={{ display: "flex", justifyContent: "space-between", padding: "1px 0", fontSize: 13, color: "#475569" }}>
+        <span>{row.label}</span><span>{row.value}</span>
+      </div>
+    ))}
+    <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0 0", fontSize: 16, fontWeight: 700, color: "#1e293b", borderTop: "1.5px solid #1e293b", marginTop: 3 }}>
+      <span>Grand Total</span><span>{fmt(invoice.grand_total)}</span>
+    </div>
+    {parseFloat(invoice.balance_due) > 0 && (
+      <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0 0", fontSize: 13, color: "#dc2626" }}>
+        <span>Balance Due</span><span style={{ fontWeight: 600 }}>{fmt(invoice.balance_due)}</span>
+      </div>
+    )}
+  </div>
+</div>
 
         {/* GST Summary */}
         <div style={{ marginBottom: 24 }}>
@@ -195,12 +213,28 @@ export default function InvoiceDetailPage() {
       </div>
 
       <style>{`
-        @media print {
-          .no-print { display: none !important; }
-          body { background: white; }
-          .card { box-shadow: none; border: none; }
-        }
-      `}</style>
+  @media print {
+    /* Hide everything */
+    body * { visibility: hidden; }
+    
+    /* Show only the invoice div and its children */
+    #invoice-print, #invoice-print * { visibility: visible; }
+    
+    /* Position it at top-left */
+    #invoice-print {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      padding: 20px;
+      box-shadow: none;
+      border: none;
+    }
+
+    /* Hide action buttons */
+    .no-print { display: none !important; }
+  }
+`}</style>
     </div>
   );
 }

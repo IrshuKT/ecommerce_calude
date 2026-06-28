@@ -122,8 +122,7 @@ async def place_order(payload: PlaceOrderRequest, current_user: User = Depends(g
             custom_width_ft=od["item"].custom_width_ft, custom_height_ft=od["item"].custom_height_ft,
             area_sqft=od["area"], line_total=od["line_total"],
         ))
-        if od["variant"].track_inventory:
-            od["variant"].stock_qty -= od["item"].quantity
+      
 
     db.add(OrderTracking(order_id=order.id, status=OrderStatus.placed, message="Order placed successfully"))
     if coupon:
@@ -202,7 +201,6 @@ async def admin_all_orders(
         "limit": limit,
     }
 
-
 @router.patch("/{order_number}/status")
 async def update_order_status(
     order_number: str,
@@ -227,14 +225,16 @@ async def update_order_status(
         message=f"Status updated to {new_status}",
     ))
 
-    # Auto-create invoice when order is confirmed
+    # In update_order_status, replace the entire stock deduction block with:
+
     if new_status == "confirmed" and old_status != "confirmed":
+
+    # ── 1. Invoice creation (existing, unchanged) ─────────────────────
         try:
             from app.models.accounting import SalesInvoice
-            # Check if invoice already exists
             inv_check = await db.execute(
-                select(SalesInvoice).where(SalesInvoice.order_id == order.id)
-            )
+            select(SalesInvoice).where(SalesInvoice.order_id == order.id)
+        )
             existing_invoice = inv_check.scalar_one_or_none()
             if not existing_invoice:
                 from app.api.v1.endpoints.sales_invoices import create_invoice_from_order
@@ -247,8 +247,49 @@ async def update_order_status(
             import traceback
             traceback.print_exc()
 
-    return {"message": "Order status updated", "status": new_status}
+    # ── 2. Stock deduction using the shared service ───────────────────
+        try:
+            from app.models.models import OrderItem, ProductVariant
+            from app.services.stock_service import record_stock_transaction  # ← same service as purchases
 
+            items_result = await db.execute(
+                select(OrderItem).where(OrderItem.order_id == order.id)
+            )
+            order_items = items_result.scalars().all()
+
+            for item in order_items:
+                var_result = await db.execute(
+                select(ProductVariant).where(ProductVariant.id == item.variant_id)
+                )
+                variant = var_result.scalar_one_or_none()
+                if not variant:
+                    print(f"⚠ Variant {item.variant_id} not found, skipping")
+                    continue
+
+                try:
+                    await record_stock_transaction(
+                    db=db,
+                    variant=variant,
+                    txn_type="out",
+                    qty=int(item.quantity),
+                    reference_type="order",
+                    reference_id=order.order_number,
+                    note=f"Stock out on order confirmation",
+                    created_by_id=current_user.id,
+                )
+                    print(f"✓ Stock deducted for variant {variant.sku}: -{item.quantity}")
+                except ValueError as e:
+                # Insufficient stock — log but don't block confirmation
+                    print(f"⚠ Stock warning for variant {variant.sku}: {e}")
+
+        except Exception as e:
+            print(f"Stock deduction failed: {e}")
+            import traceback
+            traceback.print_exc()
+   
+
+    await db.commit()
+    return {"message": "Order status updated", "status": new_status}
 
 @router.get("/admin/{order_number}")
 async def admin_get_order(

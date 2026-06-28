@@ -92,3 +92,12 @@ async def upload_logo(
     settings = await get_or_create_settings(db)
     settings.logo_url = url
     return {"logo_url": url}
+
+
+@router.get("/accounts")
+async def list_accounts(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_admin_user)):
+    from app.models.accounting import Account
+    from sqlalchemy import select
+    result = await db.execute(select(Account).where(Account.is_active == True).order_by(Account.code))
+    accounts = result.scalars().all()
+    return [{"id": a.id, "code": a.code, "name": a.name, "account_type": a.account_type} for a in accounts]

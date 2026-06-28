@@ -1,6 +1,11 @@
+"use client";
 import Link from "next/link";
+import { usePublicSettings } from "@/app/context/PublicSettingsContext";
 
 export default function Footer() {
+  const settings = usePublicSettings();
+  const year = new Date().getFullYear();
+
   return (
     <footer style={{ background: "#1e293b", color: "#94a3b8", marginTop: "auto" }}>
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "40px 24px 24px" }}>
@@ -15,32 +20,52 @@ export default function Footer() {
                   <rect x="10" y="10" width="6" height="6" rx="1" fill="white" opacity="0.9"/>
                 </svg>
               </div>
-              <span style={{ fontSize: 16, fontWeight: 600, color: "white" }}>GlassWebStore</span>
+              <span style={{ fontSize: 16, fontWeight: 600, color: "white" }}>
+                {settings.company_name || "GlassWebStore"}
+              </span>
             </div>
-            <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>Premium glass materials for homes, offices and projects across India.</p>
+            <p style={{ fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+              {settings.tagline || "Premium glass materials for homes, offices and projects across India."}
+            </p>
           </div>
+
           <div>
             <h4 style={{ color: "white", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Shop</h4>
             {[["All Products", "/shop"], ["Featured", "/shop?featured=true"], ["Categories", "/shop"]].map(([label, href]) => (
-              <div key={label} style={{ marginBottom: 8 }}><Link href={href} style={{ color: "#94a3b8", textDecoration: "none", fontSize: 13 }}>{label}</Link></div>
+              <div key={label} style={{ marginBottom: 8 }}>
+                <Link href={href} style={{ color: "#94a3b8", textDecoration: "none", fontSize: 13 }}>{label}</Link>
+              </div>
             ))}
           </div>
+
           <div>
             <h4 style={{ color: "white", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Account</h4>
             {[["My Orders", "/account/orders"], ["My Invoices", "/account/invoices"], ["Profile", "/account"]].map(([label, href]) => (
-              <div key={label} style={{ marginBottom: 8 }}><Link href={href} style={{ color: "#94a3b8", textDecoration: "none", fontSize: 13 }}>{label}</Link></div>
+              <div key={label} style={{ marginBottom: 8 }}>
+                <Link href={href} style={{ color: "#94a3b8", textDecoration: "none", fontSize: 13 }}>{label}</Link>
+              </div>
             ))}
           </div>
+
           <div>
             <h4 style={{ color: "white", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Contact</h4>
-            <p style={{ fontSize: 13, margin: "0 0 6px" }}>📞 +91 98765 43210</p>
-            <p style={{ fontSize: 13, margin: "0 0 6px" }}>✉️ hello@glassstore.in</p>
-            <p style={{ fontSize: 13, margin: 0 }}>📍 Malappuram, Kerala</p>
+            {settings.phone && <p style={{ fontSize: 13, margin: "0 0 6px" }}>📞 {settings.phone}</p>}
+            {settings.email && <p style={{ fontSize: 13, margin: "0 0 6px" }}>✉️ {settings.email}</p>}
+            {(settings.city || settings.state) && (
+              <p style={{ fontSize: 13, margin: 0 }}>
+                📍 {[settings.city, settings.state].filter(Boolean).join(", ")}
+              </p>
+            )}
           </div>
         </div>
+
         <div style={{ borderTop: "1px solid #334155", paddingTop: 20, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-          <p style={{ fontSize: 12, margin: 0 }}>© 2025 GlassStore. All rights reserved.</p>
-          <p style={{ fontSize: 12, margin: 0 }}></p>
+          <p style={{ fontSize: 12, margin: 0 }}>
+            © {year} {settings.company_name || "GlassWebStore"}. All rights reserved.
+          </p>
+          {settings.gstin && (
+            <p style={{ fontSize: 12, margin: 0 }}>GSTIN: {settings.gstin}</p>
+          )}
         </div>
       </div>
     </footer>

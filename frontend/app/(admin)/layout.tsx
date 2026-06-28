@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import AdminSidebar from "@/components/admin/Sidebar";
 import Spinner from "@/components/ui/Spinner";
+import { SettingsProvider } from "../context/SettingsContext";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuthStore();
@@ -28,11 +29,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   );
 
   return (
+    <SettingsProvider>
     <div style={{ display: "flex", minHeight: "100vh", background: "#f8fafc" }}>
       <AdminSidebar />
       <main style={{ flex: 1, overflow: "auto" }}>
         {children}
       </main>
     </div>
+   </SettingsProvider>
   );
 }

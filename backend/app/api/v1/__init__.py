@@ -3,8 +3,8 @@ from app.api.v1.endpoints import (
     settings,
     images,
     auth, users, products, categories, cart, orders,
-    coupons, payments, admin,
-    sales_invoices, sales_returns, accounting, reports
+    coupons, payments, admin,journals,
+    sales_invoices, sales_returns, accounting, reports,stock_transactions
 )
 
 router = APIRouter()
@@ -17,6 +17,7 @@ router.include_router(coupons.router,        prefix="/coupons",          tags=["
 router.include_router(orders.router,         prefix="/orders",           tags=["Orders"])
 router.include_router(payments.router,       prefix="/payments",         tags=["Payments"])
 router.include_router(admin.router,          prefix="/admin",            tags=["Admin"])
+router.include_router(stock_transactions.router, prefix="/products", tags=["Stock Transactions"])
 
 # ── Accounting ──────────────────────────
 router.include_router(settings.router,     prefix="/settings",        tags=["Company Settings"])
@@ -30,3 +31,5 @@ router.include_router(accounting.receipt_router,  prefix="/receipts",    tags=["
 router.include_router(accounting.payment_v_router,prefix="/payment-vouchers", tags=["Payment Vouchers"])
 router.include_router(reports.router,        prefix="/reports",          tags=["Reports"])
 router.include_router(reports.gst_router,    prefix="/gst",              tags=["GST Returns"])
+router.include_router(journals.router, prefix="/journals", tags=["Journals"])
+

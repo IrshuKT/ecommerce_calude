@@ -211,6 +211,7 @@ async def create_purchase(
     journal = await post_purchase_journal(db, purchase, payload.vendor_id)
     purchase.journal_id = journal.id
 
+    await db.commit()
     return {"purchase_number": purchase.purchase_number, "grand_total": str(grand_total)}
 
 
@@ -232,6 +233,78 @@ async def list_purchases(
     return result.scalars().all()
 
 
+@purchase_router.patch("/{purchase_number}/receive")
+async def mark_received(
+    purchase_number: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    result = await db.execute(
+        select(Purchase)
+        .options(selectinload(Purchase.items))
+        .where(Purchase.purchase_number == purchase_number)
+    )
+    purchase = result.scalar_one_or_none()
+
+    if not purchase:
+        raise HTTPException(status_code=404, detail="Purchase not found")
+
+    if purchase.status == PurchaseStatus.received:
+        raise HTTPException(status_code=400, detail="Purchase already marked as received")
+
+    from app.models.models import ProductVariant
+    from app.services.stock_service import record_stock_transaction
+
+    stock_updated = 0
+
+    print(f"DEBUG: Purchase {purchase_number} has {len(purchase.items)} items")
+
+    for item in purchase.items:
+        print(f"DEBUG: Item — product={item.product_name}, variant_id={item.variant_id}, qty={item.quantity}")
+        item.received_qty = item.quantity
+
+        if not item.variant_id:
+            print(f"DEBUG: SKIPPING — variant_id is None for {item.product_name}")
+            continue
+
+        v_result = await db.execute(
+            select(ProductVariant).where(ProductVariant.id == item.variant_id)
+        )
+        variant = v_result.scalar_one_or_none()
+
+        if not variant:
+            print(f"DEBUG: SKIPPING — variant {item.variant_id} not found in DB")
+            continue
+
+        print(f"DEBUG: Stock BEFORE = {variant.stock_qty} for variant {variant.sku}")
+
+        after = await record_stock_transaction(
+            db=db,
+            variant=variant,
+            txn_type="in",
+            qty=int(item.quantity),
+            reference_type="purchase",
+            reference_id=purchase.purchase_number,
+            note=f"Purchase {purchase.purchase_number}",
+            created_by_id=current_user.id,
+        )
+
+        print(f"DEBUG: Stock AFTER = {after} for variant {variant.sku}")
+        db.add(variant)
+        await db.flush()
+        stock_updated += 1
+
+    purchase.status = PurchaseStatus.received
+    await db.commit()
+    await db.refresh(purchase)
+
+    print(f"DEBUG: Committed. {stock_updated} variants updated.")
+
+    return {
+        "message": f"Purchase received. {stock_updated} variant(s) stock updated.",
+        "stock_updated": stock_updated,
+    }
+
 @purchase_router.get("/{purchase_number}")
 async def get_purchase(
     purchase_number: str,
@@ -247,34 +320,6 @@ async def get_purchase(
         raise HTTPException(status_code=404, detail="Purchase not found")
     return purchase
 
-
-@purchase_router.patch("/{purchase_number}/receive")
-async def mark_received(
-    purchase_number: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
-):
-    result = await db.execute(
-        select(Purchase).options(selectinload(Purchase.items))
-        .where(Purchase.purchase_number == purchase_number)
-    )
-    purchase = result.scalar_one_or_none()
-    if not purchase:
-        raise HTTPException(status_code=404, detail="Purchase not found")
-
-    from app.models.models import ProductVariant
-    for item in purchase.items:
-        item.received_qty = item.quantity
-        if item.variant_id:
-            v_result = await db.execute(
-                select(ProductVariant).where(ProductVariant.id == item.variant_id)
-            )
-            variant = v_result.scalar_one_or_none()
-            if variant:
-                variant.stock_qty += int(item.quantity)
-
-    purchase.status = PurchaseStatus.received
-    return {"message": "Purchase received, stock updated"}
 
 
 # ── Purchase Return ───────────────────────

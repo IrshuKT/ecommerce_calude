@@ -8,15 +8,15 @@ from app.models.accounting import Journal, JournalLine, Account, VoucherType
 
 
 def _s(n=4): return ''.join(random.choices(string.digits, k=n))
-def inv_number():   return f"INV/{datetime.now().strftime('%y%m')}-{_s()}"
-def ret_number():   return f"RET/{datetime.now().strftime('%y%m')}-{_s()}"
-def purch_number(): return f"PUR/{datetime.now().strftime('%y%m')}-{_s()}"
-def rcpt_number():  return f"RCP/{datetime.now().strftime('%y%m')}-{_s()}"
-def pay_number():   return f"PAY/{datetime.now().strftime('%y%m')}-{_s()}"
-def jnl_number():   return f"JNL/{datetime.now().strftime('%y%m')}-{_s()}"
-def cn_number():    return f"CN/{datetime.now().strftime('%y%m')}-{_s()}"
-def dn_number():    return f"DN/{datetime.now().strftime('%y%m')}-{_s()}"
-def pr_number():    return f"PRR/{datetime.now().strftime('%y%m')}-{_s()}"
+def inv_number():   return f"INV-{datetime.now().strftime('%y%m')}-{_s()}"
+def ret_number():   return f"RET-{datetime.now().strftime('%y%m')}-{_s()}"
+def purch_number(): return f"PUR-{datetime.now().strftime('%y%m')}-{_s()}"
+def rcpt_number():  return f"RCP-{datetime.now().strftime('%y%m')}-{_s()}"
+def pay_number():   return f"PAY-{datetime.now().strftime('%y%m')}-{_s()}"
+def jnl_number():   return f"JNL-{datetime.now().strftime('%y%m')}-{_s()}"
+def cn_number():    return f"CN-{datetime.now().strftime('%y%m')}-{_s()}"
+def dn_number():    return f"DN-{datetime.now().strftime('%y%m')}-{_s()}"
+def pr_number():    return f"PRR-{datetime.now().strftime('%y%m')}-{_s()}"
 
 
 async def get_account(db: AsyncSession, code: str) -> Account:

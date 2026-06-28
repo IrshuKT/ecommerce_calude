@@ -4,6 +4,7 @@ import api from "@/lib/api";
 import StatCard from "@/components/admin/StatCard";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
+import { SettingsProvider } from "@/app/context/SettingsContext";
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({ orders: 0, revenue: 0, customers: 0, pending: 0 });
@@ -44,6 +45,7 @@ export default function AdminDashboard() {
   ];
 
   return (
+    <SettingsProvider> 
     <div style={{ padding: 32 }}>
       <PageHeader title="Dashboard" subtitle={`Good ${greeting()}, here's what's happening today.`} />
 
@@ -89,6 +91,7 @@ export default function AdminDashboard() {
         </div>
       </div>
     </div>
+    </SettingsProvider>
   );
 }
 

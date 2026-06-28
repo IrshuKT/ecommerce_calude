@@ -45,12 +45,19 @@ export default function ReportsPage() {
       <div style={{ display: "flex", gap: 4, marginBottom: 24, borderBottom: "1px solid #e2e8f0", paddingBottom: 0 }}>
         {tabs.map((t) => (
           <button key={t.key} onClick={() => { setActiveTab(t.key); setData(null); }} style={{
-            padding: "8px 16px", fontSize: 14, fontWeight: activeTab === t.key ? 600 : 400,
-            color: activeTab === t.key ? "#0284c7" : "#64748b",
-            borderBottom: activeTab === t.key ? "2px solid #0284c7" : "2px solid transparent",
-            background: "none", border: "none", borderBottom: activeTab === t.key ? "2px solid #0284c7" : "2px solid transparent",
-            cursor: "pointer", marginBottom: -1,
-          }}>{t.label}</button>
+  padding: "8px 16px",
+  fontSize: 14,
+  fontWeight: activeTab === t.key ? 600 : 400,
+  color: activeTab === t.key ? "#0284c7" : "#64748b",
+  background: "transparent",
+  border: 0,
+  borderBottom:
+    activeTab === t.key
+      ? "2px solid #0284c7"
+      : "2px solid transparent",
+  cursor: "pointer",
+  marginBottom: -1,
+}}>{t.label}</button>
         ))}
       </div>
 

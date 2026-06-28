@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import api from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
+import { usePublicSettings } from "@/app/context/PublicSettingsContext";
+import { Settings } from "lucide-react";
 
 function StatCard({ label, value, icon, href }: any) {
   return (
@@ -24,6 +26,7 @@ function StatCard({ label, value, icon, href }: any) {
 
 export default function AccountDashboard() {
   const { user } = useAuthStore();
+  const settings = usePublicSettings();
   const [orders, setOrders] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,9 +71,10 @@ export default function AccountDashboard() {
               <p style={{ fontSize: 13, color: "#3b82f6", margin: 0 }}>Get exclusive pricing. Contact us to get approved.</p>
             </div>
           </div>
-          <a href="mailto:hello@glassstore.in" style={{ fontSize: 13, color: "#0284c7", background: "white", padding: "6px 14px", borderRadius: 6, border: "1px solid #bfdbfe", textDecoration: "none", fontWeight: 500 }}>
-            Contact Us
-          </a>
+          <a href={`mailto:${settings.email || "hello@glassstore.in"}`} 
+  style={{ fontSize: 13, color: "#0284c7", background: "white", padding: "6px 14px", borderRadius: 6, border: "1px solid #bfdbfe", textDecoration: "none", fontWeight: 500 }}>
+  Contact Us
+</a>
         </div>
       )}
 

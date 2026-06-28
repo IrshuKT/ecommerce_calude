@@ -3,27 +3,39 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { useCartStore } from "@/store/cart";
+import { usePublicSettings } from "@/app/context/PublicSettingsContext";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8000";
 
 export default function Navbar() {
   const { user, logout } = useAuthStore();
   const { items } = useCartStore();
   const router = useRouter();
+  const settings = usePublicSettings();
   const totalItems = items.reduce((s, i) => s + i.quantity, 0);
 
   return (
     <header style={{ background: "white", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, zIndex: 100 }}>
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        
         {/* Logo */}
         <Link href="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 7, background: "#0284c7", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
-              <rect x="2" y="2" width="6" height="6" rx="1" fill="white" opacity="0.9"/>
-              <rect x="10" y="2" width="6" height="6" rx="1" fill="white" opacity="0.6"/>
-              <rect x="2" y="10" width="6" height="6" rx="1" fill="white" opacity="0.6"/>
-              <rect x="10" y="10" width="6" height="6" rx="1" fill="white" opacity="0.9"/>
-            </svg>
+          <div style={{ width: 32, height: 32, borderRadius: 7, background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+            {settings.logo_url
+              ? <img src={`${API_BASE}${settings.logo_url}`} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+              : <div style={{ width: 28, height: 28, borderRadius: 7, background: "#0284c7", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+                    <rect x="2" y="2" width="6" height="6" rx="1" fill="white" opacity="0.9"/>
+                    <rect x="10" y="2" width="6" height="6" rx="1" fill="white" opacity="0.6"/>
+                    <rect x="2" y="10" width="6" height="6" rx="1" fill="white" opacity="0.6"/>
+                    <rect x="10" y="10" width="6" height="6" rx="1" fill="white" opacity="0.9"/>
+                  </svg>
+                </div>
+            }
           </div>
-          <span style={{ fontSize: 17, fontWeight: 600, color: "#1e293b" }}>Glass<span style={{ color: "#0284c7" }}>Store</span></span>
+          <span style={{ fontSize: 17, fontWeight: 600, color: "#1e293b" }}>
+            {settings.company_name || "Glass"}<span style={{ color: "#0284c7" }}>{settings.company_name ? "" : "Store"}</span>
+          </span>
         </Link>
 
         {/* Nav links */}
@@ -35,14 +47,12 @@ export default function Navbar() {
 
         {/* Right actions */}
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {/* Trade badge */}
           {user?.is_trade_approved && (
             <span style={{ fontSize: 11, fontWeight: 600, background: "#d1fae5", color: "#065f46", padding: "3px 8px", borderRadius: 4 }}>
               TRADE
             </span>
           )}
 
-          {/* Cart */}
           <Link href="/cart" style={{ position: "relative", textDecoration: "none", display: "flex", alignItems: "center", padding: "6px 10px", borderRadius: 8, border: "1px solid #e2e8f0", gap: 6, color: "#475569" }}>
             <span style={{ fontSize: 16 }}>🛒</span>
             <span style={{ fontSize: 13, fontWeight: 500 }}>Cart</span>
@@ -53,7 +63,6 @@ export default function Navbar() {
             )}
           </Link>
 
-          {/* Auth */}
           {user ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <Link href="/account" style={{ fontSize: 13, color: "#475569", textDecoration: "none", fontWeight: 500 }}>

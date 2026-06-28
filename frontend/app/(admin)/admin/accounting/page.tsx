@@ -8,7 +8,9 @@ const sections = [
   { title: "Receipt Vouchers",  href: "/admin/accounting/receipts",  icon: "💰", desc: "Record incoming payments", color: "#16a34a" },
   { title: "Payment Vouchers",  href: "/admin/accounting/payments",  icon: "💸", desc: "Record outgoing payments to vendors", color: "#7c3aed" },
   { title: "Journal Entries",   href: "/admin/accounting/journal",   icon: "📒", desc: "View all double-entry journal entries", color: "#0891b2" },
-];
+   { title: "Chart of Accounts",   href: "/admin/accounting/ChartOfAccounts", icon: "📊", desc: "Manage ledger accounts & account groups", color: "#0f766e" },
+  { title: "Statements", href: "/admin/accounting/statement", icon: "📋", desc: "Customer & vendor account statements", color: "#0f766e" },
+  ];
 
 export default function AccountingPage() {
   return (

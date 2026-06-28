@@ -4,6 +4,9 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
+import { useSettings } from "@/hooks/useSettings";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8000";
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, { bg: string; color: string }> = {
@@ -22,6 +25,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function InvoicesPage() {
+  const settings = useSettings();
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("all");

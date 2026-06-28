@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import api from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
+import { usePublicSettings } from "@/app/context/PublicSettingsContext";
 
 interface Product {
   id: number;
@@ -55,6 +56,7 @@ function ProductCard({ product }: { product: Product }) {
 }
 
 export default function HomePage() {
+  const settings = usePublicSettings();
   const { user } = useAuthStore();
   const [featured, setFeatured] = useState<Product[]>([]);
   const [latest, setLatest] = useState<Product[]>([]);
@@ -88,10 +90,11 @@ export default function HomePage() {
             </div>
           )}
           <h1 style={{ fontSize: 48, fontWeight: 700, margin: "0 0 16px", lineHeight: 1.15 }}>
-            Premium Glass<br />Materials Online
+            {settings.company_name || "Premium Glass"}<br /> Online Shop
           </h1>
           <p style={{ fontSize: 18, opacity: 0.9, margin: "0 0 32px", lineHeight: 1.6 }}>
-            Clear glass, mirrors, frosted panels and more. GST invoices with every order. All Kerala delivery.
+            {settings.tagline || "Clear glass, mirrors, frosted panels and more. GST invoices with every order."}
+            {settings.city ? ` ${settings.city} & all ${settings.state} delivery.` : " All Kerala delivery."}
           </p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
             <Link href="/shop" style={{ padding: "14px 32px", borderRadius: 10, background: "white", color: "#0284c7", fontWeight: 600, fontSize: 16, textDecoration: "none" }}>
@@ -107,9 +110,14 @@ export default function HomePage() {
       </section>
 
       {/* Stats bar */}
-      <section style={{ background: "#1e293b", padding: "20px 24px" }}>
+       <section style={{ background: "#1e293b", padding: "20px 24px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "center", gap: 48, flexWrap: "wrap" }}>
-          {[["🪟", "500+ Products"], ["📦", "All Kerala delivery."], ["🧾", "GST Invoices"], ["✅", "Quality Assured"]].map(([icon, text]) => (
+          {[
+            ["🪟", "500+ Products"],
+            ["📦", `${settings.state || "Kerala"} delivery`],
+            ["🧾", "GST Invoices"],
+            ["✅", "Quality Assured"]
+          ].map(([icon, text]) => (
             <div key={text} style={{ display: "flex", alignItems: "center", gap: 8, color: "#94a3b8", fontSize: 14 }}>
               <span style={{ fontSize: 18 }}>{icon}</span>
               <span>{text}</span>

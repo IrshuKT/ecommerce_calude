@@ -34,6 +34,15 @@ def effective_price(variant, user):
         return variant.trade_price
     return variant.retail_price
 
+@router.get("/admin/ids")
+async def list_product_ids(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    result = await db.execute(select(Product.id).order_by(Product.id))
+    ids = result.scalars().all()
+    return {"ids": ids}
+
 
 @router.get("/")
 async def list_products(
@@ -41,16 +50,18 @@ async def list_products(
     current_user: Optional[User] = Depends(get_optional_user),
     category_slug: Optional[str] = None,
     search: Optional[str] = None,
+    include_inactive :bool =Query(False),
     featured: Optional[bool] = None,
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
 ):
     query = (
         select(Product)
-        .options(selectinload(Product.images), selectinload(Product.variants))
-        .where(Product.is_active == True)
+        .options(selectinload(Product.images), selectinload(Product.variants),selectinload(Product.variants))
         .order_by(Product.sort_order, Product.id)
     )
+    if not include_inactive:
+        query = query.where(Product.is_active == True)
     if category_slug:
         query = query.join(Category).where(Category.slug == category_slug)
     if search:
@@ -68,7 +79,7 @@ async def list_products(
         primary_image = next((img.url for img in p.images if img.is_primary), None)
         if not primary_image and p.images:
             primary_image = p.images[0].url
-        active_variants = [v for v in p.variants if v.is_active]
+        active_variants = [v for v in p.variants if v.is_active or include_inactive]
         prices = [effective_price(v, current_user) for v in active_variants]
         min_price = min(prices, default=None)
         items.append({
@@ -82,9 +93,61 @@ async def list_products(
             "primary_image": primary_image,
             "min_price": min_price,
             "is_trade_price": bool(current_user and current_user.is_trade_approved),
-        })
+        
+    "variants": [
+        {
+            "id": v.id, 
+            "sku": v.sku,
+            "selected_attributes": v.selected_attributes,
+            "cost_price": str(v.cost_price) if v.cost_price else None,
+            "retail_price": str(v.retail_price),
+            "stock_qty": v.stock_qty,
+        } 
+    for v in p.variants if v.is_active or include_inactive],
+        }),
     return {"items": items, "total": total, "page": page, "limit": limit}
 
+# Add this in products.py BEFORE the /{slug} route (line 111)
+@router.get("/admin/")
+async def list_products_admin(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+    search: Optional[str] = None,
+    include_inactive: bool = Query(False),
+    limit: int = Query(50, le=200),
+    page: int = Query(1, ge=1),
+):
+    query = select(Product).options(
+        selectinload(Product.images),
+        selectinload(Product.variants)
+    )
+    if not include_inactive:
+        query = query.where(Product.is_active == True)
+    if search:
+        query = query.where(Product.name.ilike(f"%{search}%"))
+    
+    query = query.order_by(Product.name).offset((page - 1) * limit).limit(limit)
+    result = await db.execute(query)
+    products = result.scalars().all()
+
+    API_BASE = ""
+    items = []
+    for p in products:
+        primary_image = next((f"{API_BASE}{img.url}" for img in p.images if img.is_primary), None)
+        total_stock = sum(v.stock_qty or 0 for v in p.variants)
+        min_price = min((v.retail_price for v in p.variants if v.retail_price), default=None)
+        items.append({
+            "id": p.id,
+            "name": p.name,
+            "slug": p.slug,
+            "price_type": p.price_type,
+            "is_active": p.is_active,
+            "is_featured": p.is_featured,
+            "primary_image": primary_image,
+            "min_price": str(min_price) if min_price else None,
+            "variants": [{"id": v.id, "sku": v.sku, "stock_qty": v.stock_qty, "is_active": v.is_active, "retail_price": str(v.retail_price) if v.retail_price else None, "selected_attributes": v.selected_attributes} for v in p.variants],
+        })
+    return {"items": items, "total": len(items)}
 
 @router.get("/{slug}")
 async def get_product(
@@ -275,8 +338,13 @@ async def update_product(
     # Update variants pricing if provided
     if "variants" in payload:
         for var_data in payload["variants"]:
-            # Match by SKU
-            existing = next((v for v in product.variants if v.sku == var_data.get("sku")), None)
+        # Match by id first, then fall back to SKU
+            variant_id = var_data.get("id")
+            if variant_id:
+                existing = next((v for v in product.variants if v.id == variant_id), None)
+            else:
+                existing = next((v for v in product.variants if v.sku == var_data.get("sku")), None)
+            
             if existing:
                 existing.retail_price = var_data.get("price", existing.retail_price)
                 existing.trade_price = var_data.get("trade_price") or existing.trade_price
@@ -284,10 +352,17 @@ async def update_product(
                 existing.compare_price = var_data.get("compare_price") or existing.compare_price
                 existing.stock_qty = var_data.get("stock_qty", existing.stock_qty)
             else:
-                # New variant — add it
+                new_sku = var_data.get("sku")
+                if not new_sku:
+                    continue
+                sku_check = await db.execute(
+                        select(ProductVariant).where(ProductVariant.sku == new_sku)
+                    )
+                if sku_check.scalar_one_or_none():
+                    continue  # skip duplicate SKU
                 db.add(ProductVariant(
                     product_id=product.id,
-                    sku=var_data.get("sku"),
+                    sku=new_sku,
                     selected_attributes=var_data.get("selected_attributes", {}),
                     retail_price=var_data.get("price"),
                     trade_price=var_data.get("trade_price"),
@@ -312,6 +387,7 @@ async def delete_product(
         raise HTTPException(status_code=404, detail="Product not found")
     await db.delete(product)
 
+
 @router.get("/admin/{product_id}")
 async def get_product_admin(
     product_id: int,
@@ -321,7 +397,7 @@ async def get_product_admin(
     result = await db.execute(
         select(Product)
         .options(
-            selectinload(Product.variants),
+            selectinload(Product.variants),selectinload(Product.images),
             selectinload(Product.attributes).selectinload(ProductAttribute.values)
         )
         .where(Product.id == product_id)
@@ -343,6 +419,16 @@ async def get_product_admin(
     "category_id": product.category_id,
     "hsn_code": product.hsn_code,
     "gst_rate": float(product.gst_rate),
+
+     "images": [
+        {
+            "id": img.id,
+            "url": img.url,
+            "alt_text": img.alt_text,
+            "is_primary": img.is_primary,
+        }
+        for img in product.images
+    ],
 
     "attributes": [
         {
