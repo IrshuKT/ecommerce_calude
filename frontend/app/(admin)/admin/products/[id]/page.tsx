@@ -21,13 +21,24 @@ interface StockTxn {
   created_at: string;
 }
 
+interface AvgCost {
+  variant_id: number;
+  sku: string;
+  stock_qty: number;
+  cost_price: number | null;
+  avg_cost: number | null;
+  total_received: number;
+  purchase_count: number;
+  selected_attributes: Record<string, string>;
+}
+
 const TXN_META = {
   in:         { label: "Stock In",   bg: "#dcfce7", color: "#166534", icon: "↑" },
   out:        { label: "Stock Out",  bg: "#fee2e2", color: "#991b1b", icon: "↓" },
   adjustment: { label: "Adjustment", bg: "#fef9c3", color: "#854d0e", icon: "±" },
 };
 
-const fmt = (n: any) => n != null ? `₹${parseFloat(n).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—";
+const fmt    = (n: any) => n != null ? `₹${parseFloat(n).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—";
 const fmtDate = (s: string) => new Date(s).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 function VariantBadges({ attrs }: { attrs: Record<string, string> }) {
@@ -43,37 +54,48 @@ function VariantBadges({ attrs }: { attrs: Record<string, string> }) {
 export default function ProductViewPage() {
   const { id } = useParams();
   const router = useRouter();
-  const [product, setProduct] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"details" | "stock">("details");
-  const [txns, setTxns] = useState<StockTxn[]>([]);
-  const [txnLoading, setTxnLoading] = useState(false);
-  const [txnTotal, setTxnTotal] = useState(0);
-  const [txnPage, setTxnPage] = useState(1);
-  const [txnRefreshKey, setTxnRefreshKey] = useState(0);
-  const [filterVariant, setFilterVariant] = useState("");
-  const [filterType, setFilterType] = useState("");
+  const [product,      setProduct]      = useState<any>(null);
+  const [loading,      setLoading]      = useState(true);
+  const [activeTab,    setActiveTab]    = useState<"details" | "stock">("details");
+  const [txns,         setTxns]         = useState<StockTxn[]>([]);
+  const [txnLoading,   setTxnLoading]   = useState(false);
+  const [txnTotal,     setTxnTotal]     = useState(0);
+  const [txnPage,      setTxnPage]      = useState(1);
+  const [txnRefreshKey,setTxnRefreshKey]= useState(0);
+  const [filterVariant,setFilterVariant]= useState("");
+  const [filterType,   setFilterType]   = useState("");
   const [showAdjModal, setShowAdjModal] = useState(false);
-  const [allProductIds, setAllProductIds] = useState<number[]>([]);
+  const [allProductIds,setAllProductIds]= useState<number[]>([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
-  const [showInactive, setShowInactive] = useState(false);
+  const [avgCosts,     setAvgCosts]     = useState<AvgCost[]>([]);
+  const [avgLoading,   setAvgLoading]   = useState(false);
 
-  // ── 1. loadTxns defined FIRST before any useEffect ───────────────────
   const loadTxns = async (page = 1) => {
     setTxnLoading(true);
     try {
       const params: any = { page, limit: 30 };
       if (filterVariant) params.variant_id = filterVariant;
-      if (filterType) params.txn_type = filterType;
+      if (filterType)    params.txn_type   = filterType;
       const r = await api.get(`/products/${id}/stock-transactions`, { params });
       setTxns(r.data.items);
       setTxnTotal(r.data.total);
       setTxnPage(page);
     } catch (e: any) {
-      console.error("Stock txn load failed:", e.response?.data || e.message);
       setTxns([]);
     } finally {
       setTxnLoading(false);
+    }
+  };
+
+  const loadAvgCost = async () => {
+    setAvgLoading(true);
+    try {
+      const r = await api.get(`/products/${id}/avg-cost`);
+      setAvgCosts(Array.isArray(r.data) ? r.data : []);
+    } catch {
+      setAvgCosts([]);
+    } finally {
+      setAvgLoading(false);
     }
   };
 
@@ -84,26 +106,23 @@ export default function ProductViewPage() {
     } catch { alert("Failed to update"); }
   };
 
-  // ── 2. ALL useEffects in fixed order, never changes ───────────────────
   useEffect(() => {
     if (id) {
       api.get(`/products/admin/${id}`)
         .then(r => setProduct(r.data))
         .catch(() => setProduct(null))
         .finally(() => setLoading(false));
+      loadAvgCost();
     }
   }, [id]);
 
   useEffect(() => {
-  api.get("/products/admin/ids").then(r => {
-    const ids = (r.data.ids || []).map(Number);
-    console.log("IDs loaded:", ids.length, "currentIndex:", ids.indexOf(Number(id)));
-    setAllProductIds(ids);
-    setCurrentIndex(ids.indexOf(Number(id)));
-  }).catch((e) => console.error("IDs fetch failed:", e));
-}, [id]);
-
-  
+    api.get("/products/admin/ids").then(r => {
+      const ids = (r.data.ids || []).map(Number);
+      setAllProductIds(ids);
+      setCurrentIndex(ids.indexOf(Number(id)));
+    }).catch(() => {});
+  }, [id]);
 
   useEffect(() => {
     if (activeTab === "stock" && id) {
@@ -117,9 +136,6 @@ export default function ProductViewPage() {
     if (activeTab === "stock" && id) loadTxns(1);
   }, [activeTab, id, filterVariant, filterType, txnRefreshKey]);
 
- 
-
-  // ── 3. Early returns LAST, after all hooks ────────────────────────────
   if (loading) return <div style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>Loading product...</div>;
   if (!product) return (
     <div style={{ padding: 40, textAlign: "center" }}>
@@ -128,10 +144,6 @@ export default function ProductViewPage() {
     </div>
   );
 
-  // ── rest of JSX ───────────────────────────────────────────────────────
-  console.log("API_BASE:", API_BASE);
-  console.log("Image src:", product?.images?.[0]?.url ? `${API_BASE}${product.images[0].url}` : "no image");
-  // ── Rest of component (TabBtn, return JSX...) ─────────────────────────
   const TabBtn = ({ k, label }: { k: "details" | "stock"; label: string }) => (
     <button onClick={() => setActiveTab(k)} style={{
       padding: "9px 22px", borderRadius: "7px 7px 0 0",
@@ -143,48 +155,40 @@ export default function ProductViewPage() {
     }}>{label}</button>
   );
 
+  // overall avg cost across all variants (weighted)
+  const overallAvg = (() => {
+    const withCost = avgCosts.filter(a => a.avg_cost !== null && a.total_received > 0);
+    if (!withCost.length) return null;
+    const totalCost = withCost.reduce((s, a) => s + (a.avg_cost! * a.total_received), 0);
+    const totalQty  = withCost.reduce((s, a) => s + a.total_received, 0);
+    return totalQty > 0 ? totalCost / totalQty : null;
+  })();
+
   return (
     <div style={{ padding: 32, maxWidth: 1000 }}>
       <PageHeader
-  title={product.name}
-  subtitle={`${product.short_description || "Product details"}${currentIndex >= 0 ? ` · ${currentIndex + 1} of ${allProductIds.length}` : ""}`}
-  action={
-    <div style={{ display: "flex", gap: 10 }}>
-      <button
-        disabled={currentIndex <= 0}
-        onClick={() => router.push(`/admin/products/${allProductIds[currentIndex - 1]}`)}
-        style={{ 
-          padding: "8px 14px", borderRadius: 7, border: "1px solid #e2e8f0", fontSize: 13,
-          background: currentIndex <= 0 ? "#f8fafc" : "white", 
-          color: currentIndex <= 0 ? "#cbd5e1" : "#475569", 
-          cursor: currentIndex <= 0 ? "default" : "pointer",
-          opacity: allProductIds.length === 0 ? 0.4 : 1,  // ← dim while loading
-        }}>
-        ← Prev
-      </button>
-      <button
-        disabled={currentIndex < 0 || currentIndex >= allProductIds.length - 1}
-        onClick={() => router.push(`/admin/products/${allProductIds[currentIndex + 1]}`)}
-        style={{ 
-          padding: "8px 14px", borderRadius: 7, border: "1px solid #e2e8f0", fontSize: 13,
-          background: currentIndex >= allProductIds.length - 1 ? "#f8fafc" : "white", 
-          color: currentIndex >= allProductIds.length - 1 ? "#cbd5e1" : "#475569", 
-          cursor: currentIndex < 0 || currentIndex >= allProductIds.length - 1 ? "default" : "pointer",
-          opacity: allProductIds.length === 0 ? 0.4 : 1,  // ← dim while loading
-        }}>
-        Next →
-      </button>
-
-      <button onClick={toggleActive} style={{
-        padding: "8px 16px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 500,
-        background: product.is_active ? "#fee2e2" : "#dcfce7",
-        color: product.is_active ? "#991b1b" : "#166534",
-      }}>{product.is_active ? "Deactivate" : "Activate"}</button>
-      <button className="btn-outline" onClick={() => router.push(`/admin/products/${id}/edit`)}>✏️ Edit</button>
-      <button className="btn-outline" onClick={() => router.back()}>← Back</button>
-    </div>
-  }
-/>
+        title={product.name}
+        subtitle={`${product.short_description || "Product details"}${currentIndex >= 0 ? ` · ${currentIndex + 1} of ${allProductIds.length}` : ""}`}
+        action={
+          <div style={{ display: "flex", gap: 10 }}>
+            <button disabled={currentIndex <= 0}
+              onClick={() => router.push(`/admin/products/${allProductIds[currentIndex - 1]}`)}
+              style={{ padding: "8px 14px", borderRadius: 7, border: "1px solid #e2e8f0", fontSize: 13, background: currentIndex <= 0 ? "#f8fafc" : "white", color: currentIndex <= 0 ? "#cbd5e1" : "#475569", cursor: currentIndex <= 0 ? "default" : "pointer" }}>
+              ← Prev
+            </button>
+            <button disabled={currentIndex < 0 || currentIndex >= allProductIds.length - 1}
+              onClick={() => router.push(`/admin/products/${allProductIds[currentIndex + 1]}`)}
+              style={{ padding: "8px 14px", borderRadius: 7, border: "1px solid #e2e8f0", fontSize: 13, background: currentIndex >= allProductIds.length - 1 ? "#f8fafc" : "white", color: currentIndex >= allProductIds.length - 1 ? "#cbd5e1" : "#475569", cursor: currentIndex < 0 || currentIndex >= allProductIds.length - 1 ? "default" : "pointer" }}>
+              Next →
+            </button>
+            <button onClick={toggleActive} style={{ padding: "8px 16px", borderRadius: 7, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 500, background: product.is_active ? "#fee2e2" : "#dcfce7", color: product.is_active ? "#991b1b" : "#166534" }}>
+              {product.is_active ? "Deactivate" : "Activate"}
+            </button>
+            <button className="btn-outline" onClick={() => router.push(`/admin/products/${id}/edit`)}>✏️ Edit</button>
+            <button className="btn-outline" onClick={() => router.back()}>← Back</button>
+          </div>
+        }
+      />
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid #e2e8f0" }}>
@@ -198,6 +202,8 @@ export default function ProductViewPage() {
         {activeTab === "details" && (
           <>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
+
+              {/* Basic Info */}
               <div className="card" style={{ padding: 20 }}>
                 <h2 style={{ fontSize: 14, fontWeight: 600, color: "#475569", margin: "0 0 14px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Basic Info</h2>
                 {[
@@ -206,7 +212,7 @@ export default function ProductViewPage() {
                   { label: "GST Rate", value: `${product.gst_rate}%` },
                   { label: "HSN Code", value: product.hsn_code || "—" },
                   { label: "Featured", value: product.is_featured ? "⭐ Yes" : "No" },
-                  { label: "Category", value: product.category_id || "—" },
+                  { label: "Category", value: product.category?.name || "—" },
                 ].map(row => (
                   <div key={row.label} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f1f5f9", fontSize: 13 }}>
                     <span style={{ color: "#64748b" }}>{row.label}</span>
@@ -215,13 +221,13 @@ export default function ProductViewPage() {
                 ))}
               </div>
 
+              {/* Images */}
               <div className="card" style={{ padding: 20 }}>
                 <h2 style={{ fontSize: 14, fontWeight: 600, color: "#475569", margin: "0 0 14px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Images</h2>
                 {product.images?.length > 0 ? (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     {product.images.map((img: any) => (
                       <div key={img.id} style={{ position: "relative" }}>
-                        {console.log("Image URL:", `${API_BASE}${img.url}`)}
                         <img src={`${API_BASE}${img.url}`} alt={img.alt_text || product.name}
                           style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8, border: img.is_primary ? "2px solid #0284c7" : "1px solid #e2e8f0" }} />
                         {img.is_primary && <span style={{ position: "absolute", top: 3, left: 3, fontSize: 9, fontWeight: 700, background: "#0284c7", color: "white", padding: "1px 5px", borderRadius: 3 }}>PRIMARY</span>}
@@ -234,6 +240,86 @@ export default function ProductViewPage() {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* ── COST ANALYSIS CARD ── */}
+            <div className="card" style={{ padding: 20, marginBottom: 20, border: "1px solid #e2e8f0", borderRadius: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ fontSize: 14, fontWeight: 600, color: "#475569", margin: "0 0 2px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    💰 Cost Analysis
+                  </h2>
+                  <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>
+                    Weighted average cost from received purchases · 
+                  </p>
+                </div>
+                {overallAvg !== null && (
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 2 }}>Overall Avg Cost</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: "#f59e0b" }}>{fmt(overallAvg)}</div>
+                  </div>
+                )}
+              </div>
+
+              {avgLoading ? (
+                <div style={{ padding: "20px", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Calculating...</div>
+              ) : avgCosts.length === 0 ? (
+                <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 13, background: "#f8fafc", borderRadius: 8 }}>
+                  No purchase data yet — avg cost will appear after purchases are received
+                </div>
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                      {["Variant", "SKU", "Avg Cost", "Static Cost Price", "Margin (Retail)", "Total Received", "Purchases"].map(h => (
+                        <th key={h} style={{ padding: "9px 12px", textAlign: "left", fontSize: 11, fontWeight: 600, color: "#64748b", textTransform: "uppercase" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {avgCosts.map(a => {
+                      // find retail price from product variants
+                      const variant = product.variants?.find((v: any) => v.id === a.variant_id);
+                      const retailPrice = variant?.retail_price;
+                      const margin = a.avg_cost && retailPrice
+                        ? (((retailPrice - a.avg_cost) / retailPrice) * 100).toFixed(1)
+                        : null;
+
+                      return (
+                        <tr key={a.variant_id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                          <td style={{ padding: "10px 12px" }}>
+                            <VariantBadges attrs={a.selected_attributes} />
+                          </td>
+                          <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: 12, color: "#64748b" }}>{a.sku}</td>
+                          <td style={{ padding: "10px 12px" }}>
+                            {a.avg_cost !== null ? (
+                              <span style={{ fontWeight: 700, fontSize: 14, color: "#f59e0b" }}>{fmt(a.avg_cost)}</span>
+                            ) : (
+                              <span style={{ color: "#94a3b8", fontSize: 12 }}>No purchases</span>
+                            )}
+                          </td>
+                          <td style={{ padding: "10px 12px", color: "#64748b" }}>
+                            {fmt(a.cost_price)}
+                          </td>
+                          <td style={{ padding: "10px 12px" }}>
+                            {margin !== null ? (
+                              <span style={{
+                                fontWeight: 600,
+                                color: parseFloat(margin) > 30 ? "#16a34a" : parseFloat(margin) > 10 ? "#d97706" : "#dc2626",
+                                fontSize: 13,
+                              }}>
+                                {margin}%
+                              </span>
+                            ) : "—"}
+                          </td>
+                          <td style={{ padding: "10px 12px", color: "#475569" }}>{a.total_received} units</td>
+                          <td style={{ padding: "10px 12px", color: "#475569" }}>{a.purchase_count}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
             </div>
 
             {product.description && (
@@ -276,24 +362,34 @@ export default function ProductViewPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {product.variants.map((v: any) => (
-                        <tr key={v.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                          <td style={{ padding: "10px" }}><VariantBadges attrs={v.selected_attributes} /></td>
-                          <td style={{ padding: "10px", fontFamily: "monospace", fontSize: 12, color: "#64748b" }}>{v.sku}</td>
-                          <td style={{ padding: "10px", color: "#64748b" }}>{fmt(v.cost_price)}</td>
-                          <td style={{ padding: "10px", fontWeight: 600, color: "#0284c7" }}>{fmt(v.retail_price)}</td>
-                          <td style={{ padding: "10px", color: "#16a34a" }}>{fmt(v.trade_price)}</td>
-                          <td style={{ padding: "10px", color: "#94a3b8" }}>{fmt(v.compare_price)}</td>
-                          <td style={{ padding: "10px" }}>
-                            <span style={{ fontWeight: 600, color: v.stock_qty > 5 ? "#16a34a" : v.stock_qty > 0 ? "#d97706" : "#dc2626" }}>{v.stock_qty}</span>
-                          </td>
-                          <td style={{ padding: "10px" }}>
-                            <span style={{ fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 20, background: v.is_active ? "#dcfce7" : "#fee2e2", color: v.is_active ? "#166534" : "#991b1b" }}>
-                              {v.is_active ? "Active" : "Inactive"}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                      {product.variants.map((v: any) => {
+                        const ac = avgCosts.find(a => a.variant_id === v.id);
+                        return (
+                          <tr key={v.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                            <td style={{ padding: "10px" }}><VariantBadges attrs={v.selected_attributes} /></td>
+                            <td style={{ padding: "10px", fontFamily: "monospace", fontSize: 12, color: "#64748b" }}>{v.sku}</td>
+                            <td style={{ padding: "10px" }}>
+                              <div style={{ color: "#64748b" }}>{fmt(v.cost_price)}</div>
+                              {ac?.avg_cost && (
+                                <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 2 }}>
+                                  avg: {fmt(ac.avg_cost)}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ padding: "10px", fontWeight: 600, color: "#0284c7" }}>{fmt(v.retail_price)}</td>
+                            <td style={{ padding: "10px", color: "#16a34a" }}>{fmt(v.trade_price)}</td>
+                            <td style={{ padding: "10px", color: "#94a3b8" }}>{fmt(v.compare_price)}</td>
+                            <td style={{ padding: "10px" }}>
+                              <span style={{ fontWeight: 600, color: v.stock_qty > 5 ? "#16a34a" : v.stock_qty > 0 ? "#d97706" : "#dc2626" }}>{v.stock_qty}</span>
+                            </td>
+                            <td style={{ padding: "10px" }}>
+                              <span style={{ fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 20, background: v.is_active ? "#dcfce7" : "#fee2e2", color: v.is_active ? "#166534" : "#991b1b" }}>
+                                {v.is_active ? "Active" : "Inactive"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -305,7 +401,6 @@ export default function ProductViewPage() {
         {/* ── STOCK TAB ── */}
         {activeTab === "stock" && (
           <div>
-            {/* Stock summary per variant */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12, marginBottom: 20 }}>
               {product.variants?.map((v: any) => (
                 <div key={v.id} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 18px" }}>
@@ -318,14 +413,12 @@ export default function ProductViewPage() {
               ))}
             </div>
 
-            {/* Legend */}
             <div style={{ display: "flex", gap: 10, marginBottom: 16, fontSize: 12 }}>
               <span style={{ background: "#dcfce7", color: "#166534", padding: "3px 10px", borderRadius: 20, fontWeight: 500 }}>↑ Stock In = from Purchases</span>
               <span style={{ background: "#fee2e2", color: "#991b1b", padding: "3px 10px", borderRadius: 20, fontWeight: 500 }}>↓ Stock Out = from Sales Orders</span>
               <span style={{ background: "#fef9c3", color: "#854d0e", padding: "3px 10px", borderRadius: 20, fontWeight: 500 }}>± Adjustment = manual correction</span>
             </div>
 
-            {/* Filters + adjust button */}
             <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
               <select value={filterVariant} onChange={e => { setFilterVariant(e.target.value); setTxnPage(1); }}
                 style={{ padding: "8px 12px", borderRadius: 7, border: "1px solid #e2e8f0", fontSize: 13, color: "#475569", outline: "none" }}>
@@ -336,7 +429,6 @@ export default function ProductViewPage() {
                   </option>
                 ))}
               </select>
-
               <select value={filterType} onChange={e => { setFilterType(e.target.value); setTxnPage(1); }}
                 style={{ padding: "8px 12px", borderRadius: 7, border: "1px solid #e2e8f0", fontSize: 13, color: "#475569", outline: "none" }}>
                 <option value="">All Types</option>
@@ -344,16 +436,13 @@ export default function ProductViewPage() {
                 <option value="out">Stock Out (Orders)</option>
                 <option value="adjustment">Adjustments</option>
               </select>
-
               <div style={{ flex: 1 }} />
-
               <button onClick={() => setShowAdjModal(true)}
                 style={{ padding: "8px 18px", borderRadius: 7, background: "#f59e0b", color: "white", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 500 }}>
                 ± Stock Adjustment
               </button>
             </div>
 
-            {/* Table */}
             {txnLoading ? (
               <div style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>Loading...</div>
             ) : txns.length === 0 ? (
@@ -377,9 +466,7 @@ export default function ProductViewPage() {
                         const meta = TXN_META[t.txn_type];
                         return (
                           <tr key={t.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                            <td style={{ padding: "10px 12px", color: "#64748b", whiteSpace: "nowrap", fontSize: 12 }}>
-                              {t.created_at ? fmtDate(t.created_at) : "—"}
-                            </td>
+                            <td style={{ padding: "10px 12px", color: "#64748b", whiteSpace: "nowrap", fontSize: 12 }}>{t.created_at ? fmtDate(t.created_at) : "—"}</td>
                             <td style={{ padding: "10px 12px" }}>
                               <VariantBadges attrs={t.variant_attrs} />
                               <div style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace", marginTop: 2 }}>{t.variant_sku}</div>
@@ -389,16 +476,11 @@ export default function ProductViewPage() {
                                 {meta.icon} {meta.label}
                               </span>
                             </td>
-                            <td style={{ padding: "10px 12px", fontWeight: 700, fontSize: 15,
-                              color: t.qty_change > 0 ? "#16a34a" : t.qty_change < 0 ? "#dc2626" : "#d97706" }}>
+                            <td style={{ padding: "10px 12px", fontWeight: 700, fontSize: 15, color: t.qty_change > 0 ? "#16a34a" : t.qty_change < 0 ? "#dc2626" : "#d97706" }}>
                               {t.qty_change > 0 ? "+" : ""}{t.qty_change}
                             </td>
-                            <td style={{ padding: "10px 12px", color: "#64748b" }}>
-                              {t.qty_before != null ? t.qty_before : <span style={{ color: "#cbd5e1" }}>—</span>}
-                            </td>
-                            <td style={{ padding: "10px 12px", fontWeight: 600 }}>
-                              {t.qty_after != null ? t.qty_after : <span style={{ color: "#cbd5e1" }}>—</span>}
-                            </td>
+                            <td style={{ padding: "10px 12px", color: "#64748b" }}>{t.qty_before != null ? t.qty_before : "—"}</td>
+                            <td style={{ padding: "10px 12px", fontWeight: 600 }}>{t.qty_after != null ? t.qty_after : "—"}</td>
                             <td style={{ padding: "10px 12px" }}>
                               {t.reference_id ? (
                                 <span style={{ fontSize: 12, background: "#f1f5f9", padding: "2px 8px", borderRadius: 4, color: "#475569", fontFamily: "monospace" }}>
@@ -415,14 +497,11 @@ export default function ProductViewPage() {
                     </tbody>
                   </table>
                 </div>
-
                 {txnTotal > 30 && (
                   <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 16 }}>
-                    <button disabled={txnPage === 1} onClick={() => loadTxns(txnPage - 1)}
-                      style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #e2e8f0", background: txnPage === 1 ? "#f8fafc" : "white", cursor: txnPage === 1 ? "default" : "pointer", color: "#475569", fontSize: 13 }}>← Prev</button>
+                    <button disabled={txnPage === 1} onClick={() => loadTxns(txnPage - 1)} style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #e2e8f0", background: txnPage === 1 ? "#f8fafc" : "white", cursor: txnPage === 1 ? "default" : "pointer", color: "#475569", fontSize: 13 }}>← Prev</button>
                     <span style={{ padding: "6px 12px", fontSize: 13, color: "#64748b" }}>Page {txnPage} of {Math.ceil(txnTotal / 30)}</span>
-                    <button disabled={txnPage * 30 >= txnTotal} onClick={() => loadTxns(txnPage + 1)}
-                      style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #e2e8f0", background: txnPage * 30 >= txnTotal ? "#f8fafc" : "white", cursor: txnPage * 30 >= txnTotal ? "default" : "pointer", color: "#475569", fontSize: 13 }}>Next →</button>
+                    <button disabled={txnPage * 30 >= txnTotal} onClick={() => loadTxns(txnPage + 1)} style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid #e2e8f0", background: txnPage * 30 >= txnTotal ? "#f8fafc" : "white", cursor: txnPage * 30 >= txnTotal ? "default" : "pointer", color: "#475569", fontSize: 13 }}>Next →</button>
                   </div>
                 )}
               </>
@@ -438,7 +517,6 @@ export default function ProductViewPage() {
           onClose={() => setShowAdjModal(false)}
           onSaved={() => {
             setShowAdjModal(false);
-            // refresh product to update stock numbers
             api.get(`/products/admin/${id}`).then(r => setProduct(r.data));
             setTxnRefreshKey(k => k + 1);
           }}
@@ -448,34 +526,30 @@ export default function ProductViewPage() {
   );
 }
 
-// ── Adjustment Modal ───────────────────────────────────────────────────────────
+// ── Adjustment Modal (unchanged) ──────────────────────────────────────────────
 function AdjustmentModal({ product, productId, onClose, onSaved }: {
   product: any; productId: string; onClose: () => void; onSaved: () => void;
 }) {
   const [variantId, setVariantId] = useState(String(product.variants?.[0]?.id || ""));
-  const [newQty, setNewQty] = useState("");
-  const [note, setNote] = useState("");
-  const [refId, setRefId] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [newQty,    setNewQty]    = useState("");
+  const [note,      setNote]      = useState("");
+  const [refId,     setRefId]     = useState("");
+  const [saving,    setSaving]    = useState(false);
+  const [error,     setError]     = useState("");
 
   const selectedVariant = product.variants?.find((v: any) => String(v.id) === variantId);
   const parsedQty = parseInt(newQty);
   const delta = selectedVariant && !isNaN(parsedQty) ? parsedQty - selectedVariant.stock_qty : null;
 
   const submit = async () => {
-    if (!variantId) { setError("Select a variant"); return; }
+    if (!variantId)  { setError("Select a variant"); return; }
     if (newQty === "" || isNaN(parsedQty) || parsedQty < 0) { setError("Enter a valid stock quantity (0 or more)"); return; }
     if (!note.trim()) { setError("Please add a note explaining the adjustment"); return; }
     setSaving(true); setError("");
     try {
       await api.post(`/products/${productId}/stock-transactions`, {
-        variant_id: parseInt(variantId),
-        txn_type: "adjustment",          
-        new_qty: parsedQty,              
-        note,
-        reference_type: "manual",
-        reference_id: refId || null,
+        variant_id: parseInt(variantId), txn_type: "adjustment",
+        new_qty: parsedQty, note, reference_type: "manual", reference_id: refId || null,
       });
       onSaved();
     } catch (e: any) {
@@ -489,14 +563,10 @@ function AdjustmentModal({ product, productId, onClose, onSaved }: {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ background: "white", borderRadius: 12, padding: 28, width: 460, maxWidth: "95vw", boxShadow: "0 20px 60px rgba(0,0,0,0.2)" }}>
-
         <div style={{ marginBottom: 20 }}>
           <h2 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 4px" }}>± Stock Adjustment</h2>
-          <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>
-            Correct stock for damage, loss, audit, or opening stock. Sales and purchases are tracked automatically.
-          </p>
+          <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>Correct stock for damage, loss, audit, or opening stock.</p>
         </div>
-
         <div style={{ display: "grid", gap: 14 }}>
           <div>
             <label style={lbl}>Variant *</label>
@@ -509,7 +579,6 @@ function AdjustmentModal({ product, productId, onClose, onSaved }: {
               ))}
             </select>
           </div>
-
           <div>
             <label style={lbl}>Set stock to (new absolute quantity) *</label>
             <input type="number" min={0} style={inp} placeholder={selectedVariant ? `Current: ${selectedVariant.stock_qty}` : "0"} value={newQty} onChange={e => setNewQty(e.target.value)} />
@@ -520,22 +589,16 @@ function AdjustmentModal({ product, productId, onClose, onSaved }: {
               </p>
             )}
           </div>
-
           <div>
             <label style={lbl}>Reason / Note *</label>
-            <input style={inp} placeholder="e.g. Damage write-off, Physical count correction, Opening stock..." value={note} onChange={e => setNote(e.target.value)} />
+            <input style={inp} placeholder="e.g. Damage write-off, Physical count correction..." value={note} onChange={e => setNote(e.target.value)} />
           </div>
-
           <div>
             <label style={lbl}>Reference ID <span style={{ fontWeight: 400, color: "#94a3b8" }}>(optional)</span></label>
             <input style={inp} placeholder="e.g. DMG-001, AUDIT-2026-Q1..." value={refId} onChange={e => setRefId(e.target.value)} />
           </div>
         </div>
-
-        {error && (
-          <p style={{ color: "#dc2626", fontSize: 13, marginTop: 12, padding: "8px 12px", background: "#fee2e2", borderRadius: 6, margin: "12px 0 0" }}>{error}</p>
-        )}
-
+        {error && <p style={{ color: "#dc2626", fontSize: 13, marginTop: 12, padding: "8px 12px", background: "#fee2e2", borderRadius: 6, margin: "12px 0 0" }}>{error}</p>}
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
           <button onClick={onClose} style={{ padding: "9px 18px", borderRadius: 7, border: "1px solid #e2e8f0", background: "white", color: "#475569", cursor: "pointer", fontSize: 13 }}>Cancel</button>
           <button onClick={submit} disabled={saving} style={{ padding: "9px 20px", borderRadius: 7, background: "#f59e0b", color: "white", border: "none", cursor: saving ? "default" : "pointer", fontSize: 13, fontWeight: 500 }}>

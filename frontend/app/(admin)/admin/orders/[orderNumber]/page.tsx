@@ -4,6 +4,10 @@ import { useParams, useRouter } from "next/navigation";
 import api from "@/lib/api";
 import PageHeader from "@/components/admin/PageHeader";
 import Link from "next/link";
+import Toast, { ToastData } from "@/components/admin/Toast";
+
+
+
 const STATUSES = ["placed","confirmed","processing","shipped","delivered","cancelled"];
 
 function StatusBadge({ status }: { status: string }) {
@@ -39,12 +43,14 @@ function InfoRow({ label, value }: { label: string; value: any }) {
 
 
 export default function OrderDetailPage() {
-  const { orderNumber } = useParams();
+  const { orderNumber: rawOrderNumber } = useParams();
+  const orderNumber = decodeURIComponent(rawOrderNumber as string);
   const router = useRouter();
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [newStatus, setNewStatus] = useState("");
+  const [toast, setToast] = useState<ToastData | null>(null);
 
   useEffect(() => {
     if (orderNumber) load();
@@ -60,14 +66,32 @@ export default function OrderDetailPage() {
     finally { setLoading(false); }
   };
 
-  const updateStatus = async () => {
+ const updateStatus = async () => {
     setUpdating(true);
     try {
-      await api.patch(`/orders/${orderNumber}/status`, { status: newStatus });
+      const res = await api.patch(`/orders/${orderNumber}/status`, { status: newStatus });
+      const { status, invoice_result, invoice_number } = res.data;
+
+      let msg = `Order status updated to "${status}".`;
+      let type: ToastData["type"] = "success";
+
+      if (invoice_result === "created") {
+        msg += ` Invoice ${invoice_number} created.`;
+      } else if (invoice_result === "exists") {
+        msg += ` Invoice ${invoice_number} already existed.`;
+      } else if (invoice_result === "failed") {
+        msg += ` Invoice creation failed — check server logs.`;
+        type = "error";
+      }
+      setToast({ message: msg, type });
       await load();
-    } catch { alert("Failed to update status"); }
-    finally { setUpdating(false); }
+    } catch {
+      setToast({ message: "Failed to update status.", type: "error" });
+    } finally {
+      setUpdating(false);
+    }
   };
+
 
   const fmt = (n: any) => `₹${parseFloat(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
 
@@ -76,12 +100,13 @@ export default function OrderDetailPage() {
 
   return (
     <div style={{ padding: 32, maxWidth: 1000 }}>
+      <Toast toast={toast} onClose={() => setToast(null)} />
       <PageHeader
         title={
   <span>
     Order{" "}
     <a
-      href={`/admin/orders/${order.order_number}`}
+      href={`/admin/orders/${encodeURIComponent(order.order_number)}`}
       style={{
         fontWeight: 600,
         color: "#0284c7",

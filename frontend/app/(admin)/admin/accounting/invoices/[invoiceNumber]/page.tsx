@@ -10,10 +10,11 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "htt
 
 export default function InvoiceDetailPage() {
   const settings = useSettings();
-  const { invoiceNumber } = useParams();
+  const { invoiceNumber: rawInvoiceNumber } = useParams();
   const router = useRouter();
   const [invoice, setInvoice] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const invoiceNumber = decodeURIComponent(rawInvoiceNumber as string);
 
   useEffect(() => {
     if (invoiceNumber) {

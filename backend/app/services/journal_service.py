@@ -4,19 +4,56 @@ from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 import random, string
-from app.models.accounting import Journal, JournalLine, Account, VoucherType
+from app.models.accounting import Journal, JournalLine, Account, VoucherType, NumberSequence
 
 
-def _s(n=4): return ''.join(random.choices(string.digits, k=n))
-def inv_number():   return f"INV-{datetime.now().strftime('%y%m')}-{_s()}"
-def ret_number():   return f"RET-{datetime.now().strftime('%y%m')}-{_s()}"
-def purch_number(): return f"PUR-{datetime.now().strftime('%y%m')}-{_s()}"
-def rcpt_number():  return f"RCP-{datetime.now().strftime('%y%m')}-{_s()}"
-def pay_number():   return f"PAY-{datetime.now().strftime('%y%m')}-{_s()}"
-def jnl_number():   return f"JNL-{datetime.now().strftime('%y%m')}-{_s()}"
-def cn_number():    return f"CN-{datetime.now().strftime('%y%m')}-{_s()}"
-def dn_number():    return f"DN-{datetime.now().strftime('%y%m')}-{_s()}"
-def pr_number():    return f"PRR-{datetime.now().strftime('%y%m')}-{_s()}"
+def _current_financial_year(d: date = None) -> str:
+    d = d or date.today()
+    # Indian FY: Apr 1 – Mar 31
+    if d.month >= 4:
+        start, end = d.year, d.year + 1
+    else:
+        start, end = d.year - 1, d.year
+    return f"{start}-{str(end)[-2:]}"
+
+
+async def get_next_number(db: AsyncSession, doc_type: str, prefix: str, pad: int = 4) -> str:
+    """Atomically returns the next sequential number for a document type,
+    scoped to the current Indian financial year (Apr–Mar)."""
+    fy = _current_financial_year()
+
+    result = await db.execute(
+        select(NumberSequence)
+        .where(NumberSequence.doc_type == doc_type, NumberSequence.financial_year == fy)
+        .with_for_update()
+    )
+    seq = result.scalar_one_or_none()
+
+    if seq is None:
+        seq = NumberSequence(doc_type=doc_type, financial_year=fy, last_number=0)
+        db.add(seq)
+        await db.flush()
+        result = await db.execute(
+            select(NumberSequence)
+            .where(NumberSequence.doc_type == doc_type, NumberSequence.financial_year == fy)
+            .with_for_update()
+        )
+        seq = result.scalar_one()
+
+    seq.last_number += 1
+    await db.flush()
+    return f"{prefix}/{fy}/{str(seq.last_number).zfill(pad)}"
+
+
+async def inv_number(db):   return await get_next_number(db, "INV", "INV")
+async def ret_number(db):   return await get_next_number(db, "RET", "RET")
+async def purch_number(db): return await get_next_number(db, "PUR", "PUR")
+async def rcpt_number(db):  return await get_next_number(db, "RCP", "RCP")
+async def pay_number(db):   return await get_next_number(db, "PAY", "PAY")
+async def jnl_number(db):   return await get_next_number(db, "JNL", "JNL")
+async def cn_number(db):    return await get_next_number(db, "CN", "CN")
+async def dn_number(db):    return await get_next_number(db, "DN", "DN")
+async def pr_number(db):    return await get_next_number(db, "PRR", "PRR")
 
 
 async def get_account(db: AsyncSession, code: str) -> Account:
@@ -32,7 +69,7 @@ async def post_journal(db, voucher_type, voucher_date, lines, reference=None, na
     total_credit = sum(Decimal(str(l.get("credit", 0))) for l in lines)
     if abs(total_debit - total_credit) > Decimal("0.01"):
         raise ValueError(f"Journal imbalance: debit={total_debit} credit={total_credit}")
-    journal = Journal(voucher_number=jnl_number(), voucher_type=voucher_type,
+    journal = Journal(voucher_number=await jnl_number(db), voucher_type=voucher_type,
                       voucher_date=voucher_date, reference=reference, narration=narration,
                       is_posted=True, created_by_id=created_by_id)
     db.add(journal)
@@ -68,7 +105,6 @@ async def post_sales_invoice_journal(db, invoice, customer_id):
     if invoice.shipping_charge:
         lines.append({"account_code": "4100", "credit": float(invoice.shipping_charge), "narration": "Shipping"})
     return await post_journal(db, VoucherType.sales_invoice, invoice.invoice_date, lines, reference=invoice.invoice_number, narration=f"Sales invoice {invoice.invoice_number}")
-
 
 async def post_receipt_journal(db, receipt, customer_id):
     debit_account = await get_account(db, _payment_mode_account(receipt.payment_mode))

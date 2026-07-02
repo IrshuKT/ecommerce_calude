@@ -3,7 +3,7 @@ from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional, List
 from sqlalchemy import (
-    String, Text, Boolean, Integer, Numeric, DateTime, Date, Enum,
+    String, Text, Boolean, Integer, Numeric, DateTime, Date, Enum,Column,
     ForeignKey, JSON, UniqueConstraint, func, Index
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -199,6 +199,7 @@ class SalesInvoiceItem(Base):
     igst_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
     line_total: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     invoice: Mapped["SalesInvoice"] = relationship("SalesInvoice", back_populates="items")
+    variant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("product_variants.id"), nullable=True)
 
 
 class SalesReturn(Base):
@@ -206,8 +207,9 @@ class SalesReturn(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     return_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     return_date: Mapped[date] = mapped_column(Date)
-    invoice_id: Mapped[int] = mapped_column(ForeignKey("sales_invoices.id"))
+    invoice_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sales_invoices.id"), nullable=True)
     customer_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    customer: Mapped["User"] = relationship("User", foreign_keys=[customer_id])
     reason: Mapped[Optional[str]] = mapped_column(String(500))
     status: Mapped[ReturnStatus] = mapped_column(Enum(ReturnStatus), default=ReturnStatus.requested)
     subtotal: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
@@ -240,7 +242,7 @@ class SalesReturnItem(Base):
     line_total: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     restock: Mapped[bool] = mapped_column(Boolean, default=True)
     sales_return: Mapped["SalesReturn"] = relationship("SalesReturn", back_populates="items")
-
+    variant_id = Column(Integer, ForeignKey("product_variants.id"), nullable=True)
 
 class Purchase(Base):
     __tablename__ = "purchases"
@@ -335,7 +337,7 @@ class PurchaseReturnItem(Base):
     igst_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
     line_total: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     purchase_return: Mapped["PurchaseReturn"] = relationship("PurchaseReturn", back_populates="items")
-
+    variant_id: Mapped[Optional[int]] = mapped_column(ForeignKey("product_variants.id"), nullable=True)
 
 class ReceiptVoucher(Base):
     __tablename__ = "receipt_vouchers"
@@ -348,6 +350,8 @@ class ReceiptVoucher(Base):
     payment_mode: Mapped[str] = mapped_column(String(30))
     reference_number: Mapped[Optional[str]] = mapped_column(String(100))
     bank_account: Mapped[Optional[str]] = mapped_column(String(100))
+    cheque_number: Mapped[Optional[str]] = mapped_column(String(50))     
+    cheque_date: Mapped[Optional[date]] = mapped_column(Date)            
     narration: Mapped[Optional[str]] = mapped_column(String(300))
     debit_account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
     journal_id: Mapped[Optional[int]] = mapped_column(ForeignKey("journals.id"))
@@ -367,6 +371,8 @@ class PaymentVoucher(Base):
     payment_mode: Mapped[str] = mapped_column(String(30))
     reference_number: Mapped[Optional[str]] = mapped_column(String(100))
     bank_account: Mapped[Optional[str]] = mapped_column(String(100))
+    cheque_number: Mapped[Optional[str]] = mapped_column(String(50))     
+    cheque_date: Mapped[Optional[date]] = mapped_column(Date)           
     narration: Mapped[Optional[str]] = mapped_column(String(300))
     credit_account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
     journal_id: Mapped[Optional[int]] = mapped_column(ForeignKey("journals.id"))
@@ -397,3 +403,14 @@ class GSTReturn(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     __table_args__ = (UniqueConstraint("return_type", "period_month", "period_year", name="uq_gst_return_period"),)
+
+class NumberSequence(Base):
+    __tablename__ = "number_sequences"
+    __table_args__ = (
+        UniqueConstraint("doc_type", "financial_year", name="uq_seq_doctype_fy"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    doc_type = Column(String(20), nullable=False)        # 'INV','PUR','RCP','PAY','JNL','CN','DN','PRR','RET'
+    financial_year = Column(String(10), nullable=False)  # '2026-27'
+    last_number = Column(Integer, nullable=False, default=0)

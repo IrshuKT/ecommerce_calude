@@ -14,13 +14,12 @@ from app.models.models import (Order, OrderItem, OrderTracking, CartItem, Produc
 from app.api.v1.endpoints.auth import get_current_user, get_admin_user
 from app.core.config import settings
 from app.models.models import OrderTracking
+from app.services.journal_service import get_next_number
 
 
 router = APIRouter()
 
 
-def generate_order_number():
-    return f"GS{datetime.now().strftime('%y%m%d')}{''.join(random.choices(string.digits, k=6))}"
 
 
 def calculate_gst(amount, gst_rate, is_interstate):
@@ -98,7 +97,7 @@ async def place_order(payload: PlaceOrderRequest, current_user: User = Depends(g
     total_amount = taxable_amount + cgst_total + sgst_total + igst_total + shipping_charge
 
     order = Order(
-        order_number=generate_order_number(), user_id=current_user.id,
+        order_number=await get_next_number(db, "ORD", "GS"), user_id=current_user.id,
         coupon_id=coupon.id if coupon else None,
         shipping_name=address.full_name, shipping_phone=address.phone,
         shipping_line1=address.line1, shipping_line2=address.line2,
@@ -140,15 +139,6 @@ async def my_orders(current_user: User = Depends(get_current_user), db: AsyncSes
     return result.scalars().all()
 
 
-@router.get("/{order_number}")
-async def get_order(order_number: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Order).options(selectinload(Order.items), selectinload(Order.tracking))
-        .where(Order.order_number == order_number, Order.user_id == current_user.id))
-    order = result.scalar_one_or_none()
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    return order
 
 
 # ── Hook: auto-create invoice on order confirm ──
@@ -201,7 +191,10 @@ async def admin_all_orders(
         "limit": limit,
     }
 
-@router.patch("/{order_number}/status")
+
+
+
+@router.patch("/{order_number:path}/status")
 async def update_order_status(
     order_number: str,
     payload: dict,
@@ -209,7 +202,9 @@ async def update_order_status(
     current_user: User = Depends(get_admin_user),
 ):
     result = await db.execute(
-        select(Order).where(Order.order_number == order_number)
+        select(Order)
+        .options(selectinload(Order.items))
+        .where(Order.order_number == order_number)
     )
     order = result.scalar_one_or_none()
     if not order:
@@ -225,32 +220,39 @@ async def update_order_status(
         message=f"Status updated to {new_status}",
     ))
 
-    # In update_order_status, replace the entire stock deduction block with:
+    invoice_result = None       # "created" | "exists" | "failed" | None
+    invoice_number = None
+    stock_result = None         # "deducted" | "failed" | None
 
     if new_status == "confirmed" and old_status != "confirmed":
 
-    # ── 1. Invoice creation (existing, unchanged) ─────────────────────
+        # ── 1. Invoice creation ─────────────────────
         try:
             from app.models.accounting import SalesInvoice
             inv_check = await db.execute(
-            select(SalesInvoice).where(SalesInvoice.order_id == order.id)
-        )
+                select(SalesInvoice).where(SalesInvoice.order_id == order.id)
+            )
             existing_invoice = inv_check.scalar_one_or_none()
             if not existing_invoice:
                 from app.api.v1.endpoints.sales_invoices import create_invoice_from_order
                 invoice = await create_invoice_from_order(db, order)
+                invoice_result = "created"
+                invoice_number = invoice.invoice_number
                 print(f"✓ Invoice {invoice.invoice_number} created for order {order.order_number}")
             else:
+                invoice_result = "exists"
+                invoice_number = existing_invoice.invoice_number
                 print(f"Invoice already exists for order {order.order_number}")
         except Exception as e:
+            invoice_result = "failed"
             print(f"Invoice creation failed: {e}")
             import traceback
             traceback.print_exc()
 
-    # ── 2. Stock deduction using the shared service ───────────────────
+        # ── 2. Stock deduction ───────────────────
         try:
             from app.models.models import OrderItem, ProductVariant
-            from app.services.stock_service import record_stock_transaction  # ← same service as purchases
+            from app.services.stock_service import record_stock_transaction
 
             items_result = await db.execute(
                 select(OrderItem).where(OrderItem.order_id == order.id)
@@ -259,39 +261,38 @@ async def update_order_status(
 
             for item in order_items:
                 var_result = await db.execute(
-                select(ProductVariant).where(ProductVariant.id == item.variant_id)
+                    select(ProductVariant).where(ProductVariant.id == item.variant_id)
                 )
                 variant = var_result.scalar_one_or_none()
                 if not variant:
                     print(f"⚠ Variant {item.variant_id} not found, skipping")
                     continue
-
                 try:
                     await record_stock_transaction(
-                    db=db,
-                    variant=variant,
-                    txn_type="out",
-                    qty=int(item.quantity),
-                    reference_type="order",
-                    reference_id=order.order_number,
-                    note=f"Stock out on order confirmation",
-                    created_by_id=current_user.id,
-                )
+                        db=db, variant=variant, txn_type="out", qty=int(item.quantity),
+                        reference_type="order", reference_id=order.order_number,
+                        note="Stock out on order confirmation", created_by_id=current_user.id,
+                    )
                     print(f"✓ Stock deducted for variant {variant.sku}: -{item.quantity}")
                 except ValueError as e:
-                # Insufficient stock — log but don't block confirmation
                     print(f"⚠ Stock warning for variant {variant.sku}: {e}")
-
+            stock_result = "deducted"
         except Exception as e:
+            stock_result = "failed"
             print(f"Stock deduction failed: {e}")
             import traceback
             traceback.print_exc()
-   
 
     await db.commit()
-    return {"message": "Order status updated", "status": new_status}
+    return {
+        "message": "Order status updated",
+        "status": new_status,
+        "invoice_result": invoice_result,
+        "invoice_number": invoice_number,
+        "stock_result": stock_result,
+    }
 
-@router.get("/admin/{order_number}")
+@router.get("/admin/{order_number:path}")
 async def admin_get_order(
     order_number: str,
     db: AsyncSession = Depends(get_db),
@@ -302,6 +303,16 @@ async def admin_get_order(
         .options(selectinload(Order.items), selectinload(Order.tracking))
         .where(Order.order_number == order_number)
     )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return order
+
+@router.get("/{order_number:path}")
+async def get_order(order_number: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Order).options(selectinload(Order.items), selectinload(Order.tracking))
+        .where(Order.order_number == order_number, Order.user_id == current_user.id))
     order = result.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")

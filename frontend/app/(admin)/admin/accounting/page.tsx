@@ -5,13 +5,15 @@ import Link from "next/link";
 const sections = [
   { title: "Sales Invoices",    href: "/admin/accounting/invoices",  icon: "🧾", desc: "View all customer invoices", color: "#0284c7" },
   { title: "Sales Returns",     href: "/admin/accounting/returns",   icon: "↩️", desc: "Credit notes & return approvals", color: "#d97706" },
+  { title: "Purchases",         href: "/admin/accounting/purchases", icon: "📦", desc: "View all vendor purchases", color: "#c2410c" },
+  { title: "Purchase Returns",  href: "/admin/accounting/purchases/return", icon: "↪️", desc: "Debit notes & vendor returns", color: "#b45309" },
   { title: "Receipt Vouchers",  href: "/admin/accounting/receipts",  icon: "💰", desc: "Record incoming payments", color: "#16a34a" },
   { title: "Payment Vouchers",  href: "/admin/accounting/payments",  icon: "💸", desc: "Record outgoing payments to vendors", color: "#7c3aed" },
   { title: "Journal Entries",   href: "/admin/accounting/journal",   icon: "📒", desc: "View all double-entry journal entries", color: "#0891b2" },
-   { title: "Chart of Accounts",   href: "/admin/accounting/ChartOfAccounts", icon: "📊", desc: "Manage ledger accounts & account groups", color: "#0f766e" },
-  { title: "Statements", href: "/admin/accounting/statement", icon: "📋", desc: "Customer & vendor account statements", color: "#0f766e" },
-  { title: "Opening Balances", href: "/admin/accounting/opening-balances", icon: "⚖️", desc: "Customer & vendor Opening Balance", color: "#166534" }
-  ];
+  { title: "Chart of Accounts", href: "/admin/accounting/ChartOfAccounts", icon: "📊", desc: "Manage ledger accounts & account groups", color: "#0f766e" },
+  { title: "Statements",        href: "/admin/accounting/statement", icon: "📋", desc: "Customer & vendor account statements", color: "#0f766e" },
+  { title: "Opening Balances",  href: "/admin/accounting/opening-balances", icon: "⚖️", desc: "Customer & vendor Opening Balance", color: "#166534" }
+];
 
 export default function AccountingPage() {
   return (

@@ -93,7 +93,7 @@ export default function HomePage() {
             {settings.company_name || "Premium Glass"}<br /> Online Shop
           </h1>
           <p style={{ fontSize: 18, opacity: 0.9, margin: "0 0 32px", lineHeight: 1.6 }}>
-            {settings.tagline || "Clear glass, mirrors, frosted panels and more. GST invoices with every order."}
+            {settings.tagline || "Clear glass, mirrors, frosted panels and more."}
             {settings.city ? ` ${settings.city} & all ${settings.state} delivery.` : " All Kerala delivery."}
           </p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>

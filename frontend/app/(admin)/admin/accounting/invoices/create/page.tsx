@@ -77,15 +77,29 @@ export default function CreateManualInvoicePage() {
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState("");
 
+  // preload customers on mount
+  useEffect(() => {
+    api.get("/users/?limit=100").then(r => {
+      const data = Array.isArray(r.data) ? r.data : r.data?.items || [];
+      setCustomers(data.filter((u: any) => u.role === "customer"));
+    }).catch(() => {});
+  }, []);
+
   // ── customer search ────────────────────────────────────────────────────────
   const searchCustomers = useCallback(async (q: string) => {
     setCustomerSearch(q);
     setCustomerId("");
     if (q.length < 1) { setCustomers([]); return; }
     try {
-      const r = await api.get(`/users/?search=${q}&limit=8`);
+      const r = await api.get(`/users/?limit=50`);
       const data = Array.isArray(r.data) ? r.data : r.data?.items || [];
-      setCustomers(data.filter((u: any) => u.role === "customer"));
+      const filtered = data.filter((u: any) =>
+        u.role === "customer" &&
+        (u.name?.toLowerCase().includes(q.toLowerCase()) ||
+         u.phone?.includes(q) ||
+         u.email?.toLowerCase().includes(q.toLowerCase()))
+      );
+      setCustomers(filtered.slice(0, 8));
       setShowCustDrop(true);
     } catch { setCustomers([]); }
   }, []);
@@ -98,7 +112,7 @@ export default function CreateManualInvoicePage() {
       const nr = [...variantResults]; nr[idx] = []; setVariantResults(nr); return;
     }
     try {
-      const r = await api.get(`/products/variants/search?q=${q}&limit=8`);
+      const r = await api.get(`/products/variants/search?q=${encodeURIComponent(q)}&limit=8`);
       const nr = [...variantResults]; nr[idx] = Array.isArray(r.data) ? r.data : [];
       setVariantResults(nr);
     } catch { }
@@ -182,7 +196,7 @@ export default function CreateManualInvoicePage() {
         })),
       };
       const r = await api.post("/invoices/manual", payload);
-      router.push(`/admin/accounting/invoices/${r.data.invoice_number}`);
+      router.push(`/admin/accounting/invoices/${encodeURIComponent(r.data.invoice_number)}`);
     } catch (e: any) {
       setError(e.response?.data?.detail || "Failed to create invoice");
     } finally {

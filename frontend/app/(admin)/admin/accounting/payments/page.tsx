@@ -3,11 +3,13 @@ import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
+import { useRouter } from "next/navigation";
 
 const PAYMENT_MODES = ["cash", "upi", "bank_transfer", "cheque", "neft", "rtgs"];
 
 export default function PaymentVouchersPage() {
-  const [payments, setPayments] = useState([]);
+  const router = useRouter();
+  const [payments, setPayments] = useState<any[]>([]);
   const [vendors, setVendors] = useState<any[]>([]);
   const [purchases, setPurchases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,7 +56,14 @@ export default function PaymentVouchersPage() {
   const vendorPurchases = purchases.filter((p: any) => p.vendor_id === parseInt(form.vendor_id) && parseFloat(p.balance_due) > 0);
 
   const columns = [
-    { key: "payment_number", label: "Payment #", render: (r: any) => <span style={{ fontWeight: 600, color: "#7c3aed" }}>{r.payment_number}</span> },
+    { key: "payment_number", label: "Payment #", render: (r: any) => (
+      <span
+        style={{ fontWeight: 600, color: "#7c3aed", cursor: "pointer" }}
+        onClick={() => router.push(`/admin/accounting/payments/${encodeURIComponent(r.payment_number)}`)}
+      >
+        {r.payment_number}
+      </span>
+    )},
     { key: "payment_date", label: "Date", render: (r: any) => new Date(r.payment_date).toLocaleDateString("en-IN") },
     { key: "vendor_id", label: "Vendor", render: (r: any) => vendors.find(v => v.id === r.vendor_id)?.name || `Vendor #${r.vendor_id}` },
     { key: "amount", label: "Amount", render: (r: any) => <span style={{ fontWeight: 600, color: "#dc2626" }}>{fmt(r.amount)}</span> },

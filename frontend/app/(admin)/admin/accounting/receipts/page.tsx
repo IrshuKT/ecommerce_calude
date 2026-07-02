@@ -3,10 +3,12 @@ import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
+import { useRouter } from "next/navigation";
 
 const PAYMENT_MODES = ["cash", "upi", "bank_transfer", "razorpay", "cheque", "neft", "rtgs", "cod"];
 
 export default function ReceiptsPage() {
+  const router = useRouter();
   const [receipts, setReceipts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -59,7 +61,14 @@ export default function ReceiptsPage() {
   const lbl = { fontSize: 13, fontWeight: 500, color: "#475569", display: "block", marginBottom: 5 } as const;
 
   const columns = [
-    { key: "receipt_number", label: "Receipt #", render: (r: any) => <span style={{ fontWeight: 600, color: "#0284c7" }}>{r.receipt_number}</span> },
+    { key: "receipt_number", label: "Receipt #", render: (r: any) => (
+      <span
+        style={{ fontWeight: 600, color: "#0284c7", cursor: "pointer" }}
+        onClick={() => router.push(`/admin/accounting/receipts/${encodeURIComponent(r.receipt_number)}`)}
+      >
+        {r.receipt_number}
+      </span>
+    )},
     { key: "receipt_date", label: "Date", render: (r: any) => new Date(r.receipt_date).toLocaleDateString("en-IN") },
     { key: "customer_id", label: "Customer", render: (r: any) => customers.find(c => c.id === r.customer_id)?.name || `Customer #${r.customer_id}` },
     { key: "amount", label: "Amount", render: (r: any) => <span style={{ fontWeight: 600, color: "#16a34a" }}>{fmt(r.amount)}</span> },

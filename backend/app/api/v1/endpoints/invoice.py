@@ -1,3 +1,4 @@
+"""  
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -138,7 +139,7 @@ async def create_manual_invoice(
 
     # ── create SalesInvoice (draft) ──────────────────────────────────────────
     invoice = SalesInvoice(
-        invoice_number   = inv_number(),
+        invoice_number   = await inv_number(db),
         invoice_date     = payload.invoice_date,
         due_date         = payload.due_date,
         order_id         = None,               # manual — no order
@@ -189,7 +190,7 @@ async def create_manual_invoice(
 # — post journal + deduct stock
 # ══════════════════════════════════════════════════════════════════════════════
 
-@router.post("/{invoice_number}/confirm")
+@router.post("/{invoice_number:path}/confirm")
 async def confirm_invoice(
     invoice_number: str,
     db: AsyncSession = Depends(get_db),
@@ -242,7 +243,7 @@ async def confirm_invoice(
 # POST /invoices/{invoice_number}/cancel
 # ══════════════════════════════════════════════════════════════════════════════
 
-@router.post("/{invoice_number}/cancel")
+@router.post("/{invoice_number:path}/cancel")
 async def cancel_invoice(
     invoice_number: str,
     db: AsyncSession = Depends(get_db),
@@ -262,3 +263,5 @@ async def cancel_invoice(
     invoice.status = InvoiceStatus.cancelled
     await db.commit()
     return {"invoice_number": invoice.invoice_number, "status": "cancelled"}
+
+    """

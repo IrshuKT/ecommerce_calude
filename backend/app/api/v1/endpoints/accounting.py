@@ -14,7 +14,7 @@ from datetime import date
 from app.db.session import get_db
 from app.models.accounting import (
     Vendor, Purchase, PurchaseItem, PurchaseReturn, PurchaseReturnItem,
-    ReceiptVoucher, PaymentVoucher, SalesInvoice,
+    ReceiptVoucher, PaymentVoucher, SalesInvoice,Account,Journal,JournalLine,
     PurchaseStatus, ReturnStatus, VendorStatus
 )
 from app.models.models import User
@@ -29,7 +29,7 @@ from app.core.config import settings
 # ── Vendors ──────────────────────────────
 
 vendors_router = APIRouter()
-
+accounting_router = APIRouter()
 
 class VendorIn(BaseModel):
     name: str
@@ -159,7 +159,7 @@ async def create_purchase(
     is_interstate = vendor.state_code != settings.STORE_STATE_CODE
 
     purchase = Purchase(
-        purchase_number=purch_number(),
+        purchase_number= await purch_number(db),
         vendor_id=payload.vendor_id,
         purchase_date=payload.purchase_date,
         vendor_invoice_number=payload.vendor_invoice_number,
@@ -233,7 +233,7 @@ async def list_purchases(
     return result.scalars().all()
 
 
-@purchase_router.patch("/{purchase_number}/receive")
+@purchase_router.patch("/{purchase_number:path}/receive")
 async def mark_received(
     purchase_number: str,
     db: AsyncSession = Depends(get_db),
@@ -305,7 +305,7 @@ async def mark_received(
         "stock_updated": stock_updated,
     }
 
-@purchase_router.get("/{purchase_number}")
+@purchase_router.get("/{purchase_number:path}")
 async def get_purchase(
     purchase_number: str,
     db: AsyncSession = Depends(get_db),
@@ -328,6 +328,7 @@ pr_router = APIRouter()
 
 
 class PRItemIn(BaseModel):
+    variant_id: Optional[int] = None
     product_name: str
     hsn_code: Optional[str] = None
     quantity: Decimal
@@ -336,9 +337,11 @@ class PRItemIn(BaseModel):
 
 
 class PurchaseReturnIn(BaseModel):
-    purchase_number: str
+    purchase_number: Optional[str] = None
+    vendor_id: Optional[int] = None  
     reason: Optional[str] = None
     items: List[PRItemIn]
+
 
 
 @pr_router.post("/", status_code=201)
@@ -347,26 +350,27 @@ async def create_purchase_return(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_admin_user),
 ):
+    from app.services.stock_service import record_stock_transaction
+    from app.models.models import ProductVariant
+
     result = await db.execute(
         select(Purchase).where(Purchase.purchase_number == payload.purchase_number)
     )
     purchase = result.scalar_one_or_none()
     if not purchase:
         raise HTTPException(status_code=404, detail="Purchase not found")
-
     is_interstate = purchase.is_interstate
     pr = PurchaseReturn(
-        return_number=pr_number(),
+        return_number= await pr_number(db),
         return_date=date.today(),
         purchase_id=purchase.id,
         vendor_id=purchase.vendor_id,
         reason=payload.reason,
         status=ReturnStatus.approved,
-        debit_note_number=dn_number(),
+        debit_note_number=await dn_number(db),
     )
     db.add(pr)
     await db.flush()
-
     subtotal = cgst_t = sgst_t = igst_t = Decimal("0")
     for item in payload.items:
         taxable = (item.unit_price * item.quantity).quantize(Decimal("0.01"))
@@ -375,9 +379,8 @@ async def create_purchase_return(
         cgst = Decimal("0") if is_interstate else half
         sgst = Decimal("0") if is_interstate else (tax - half)
         igst = tax if is_interstate else Decimal("0")
-
         db.add(PurchaseReturnItem(
-            return_id=pr.id,
+            return_id=pr.id, variant_id=item.variant_id,
             product_name=item.product_name,
             hsn_code=item.hsn_code,
             quantity=item.quantity,
@@ -389,15 +392,33 @@ async def create_purchase_return(
         ))
         subtotal += taxable; cgst_t += cgst; sgst_t += sgst; igst_t += igst
 
+        # ── stock out (returning to vendor reduces our stock) ──
+        if item.variant_id:
+            var_result = await db.execute(select(ProductVariant).where(ProductVariant.id == item.variant_id))
+            variant = var_result.scalar_one_or_none()
+            if variant:
+                try:
+                    await record_stock_transaction(
+                        db=db,
+                        variant=variant,
+                        txn_type="out",
+                        qty=int(item.quantity),
+                        reference_type="purchase_return",
+                        reference_id=pr.return_number,
+                        note=f"Stock out — returned to vendor via {pr.return_number}",
+                        created_by_id=current_user.id,
+                    )
+                except ValueError as e:
+                    print(f"⚠ Stock warning for variant {variant.sku}: {e}")
+
     pr.subtotal = subtotal
     pr.cgst_amount = cgst_t; pr.sgst_amount = sgst_t; pr.igst_amount = igst_t
     pr.total_amount = subtotal + cgst_t + sgst_t + igst_t
-
     journal = await post_purchase_return_journal(db, pr, purchase.vendor_id)
     pr.journal_id = journal.id
-
+    await db.commit()
+    await db.refresh(pr)
     return {"return_number": pr.return_number, "debit_note_number": pr.debit_note_number}
-
 
 @pr_router.get("/")
 async def list_purchase_returns(
@@ -425,8 +446,17 @@ class ReceiptIn(BaseModel):
     payment_mode: str
     reference_number: Optional[str] = None
     bank_account: Optional[str] = None
+    cheque_number: Optional[str] = None    
+    cheque_date: Optional[date] = None 
     narration: Optional[str] = None
     receipt_date: date
+
+class ReceiptEditIn(BaseModel):
+    reference_number: Optional[str] = None
+    bank_account: Optional[str] = None
+    narration: Optional[str] = None
+    cheque_number: Optional[str] = None
+    cheque_date: Optional[date] = None
 
 
 @receipt_router.post("/", status_code=201)
@@ -457,7 +487,7 @@ async def create_receipt(
             invoice.status = InvoiceStatus.paid if invoice.balance_due <= 0 else InvoiceStatus.partially_paid
 
     receipt = ReceiptVoucher(
-        receipt_number=rcpt_number(),
+        receipt_number= await rcpt_number(db),
         receipt_date=payload.receipt_date,
         customer_id=payload.customer_id,
         invoice_id=invoice_id,
@@ -465,6 +495,8 @@ async def create_receipt(
         payment_mode=payload.payment_mode,
         reference_number=payload.reference_number,
         bank_account=payload.bank_account,
+        cheque_number=payload.cheque_number,
+        cheque_date=payload.cheque_date,
         narration=payload.narration,
         debit_account_id=debit_account.id,
     )
@@ -473,8 +505,25 @@ async def create_receipt(
 
     journal = await post_receipt_journal(db, receipt, payload.customer_id)
     receipt.journal_id = journal.id
-
+    await db.commit()
+                                   
     return {"receipt_number": receipt.receipt_number}
+
+@receipt_router.patch("/{receipt_number:path}")
+async def update_receipt(
+    receipt_number: str,
+    payload: ReceiptEditIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    result = await db.execute(select(ReceiptVoucher).where(ReceiptVoucher.receipt_number == receipt_number))
+    receipt = result.scalar_one_or_none()
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(receipt, k, v)
+    await db.commit()
+    return {"message": "Receipt updated"}
 
 
 @receipt_router.get("/")
@@ -490,6 +539,73 @@ async def list_receipts(
     )
     return result.scalars().all()
 
+@receipt_router.get("/{receipt_number:path}")
+async def get_receipt(
+    receipt_number: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    result = await db.execute(
+        select(ReceiptVoucher).where(ReceiptVoucher.receipt_number == receipt_number)
+    )
+    receipt = result.scalar_one_or_none()
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    customer_name = None
+    cust_result = await db.execute(select(User).where(User.id == receipt.customer_id))
+    customer = cust_result.scalar_one_or_none()
+    if customer:
+        customer_name = customer.name
+
+    invoice_number = None
+    if receipt.invoice_id:
+        inv_result = await db.execute(select(SalesInvoice).where(SalesInvoice.id == receipt.invoice_id))
+        invoice = inv_result.scalar_one_or_none()
+        if invoice:
+            invoice_number = invoice.invoice_number
+
+    return {
+        "id": receipt.id,
+        "receipt_number": receipt.receipt_number,
+        "receipt_date": receipt.receipt_date,
+        "customer_id": receipt.customer_id,
+        "customer_name": customer_name,
+        "invoice_id": receipt.invoice_id,
+        "invoice_number": invoice_number,
+        "amount": receipt.amount,
+        "payment_mode": receipt.payment_mode,
+        "reference_number": receipt.reference_number,
+        "bank_account": receipt.bank_account,
+        "cheque_number": receipt.cheque_number,
+        "cheque_date": receipt.cheque_date,
+        "narration": receipt.narration,
+        "created_at": receipt.created_at,
+    }
+
+
+@accounting_router.get("/accounts")
+async def get_accounts(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    accounts = (await db.execute(
+        select(Account)
+        .where(Account.is_active == True)
+        .order_by(Account.code)
+    )).scalars().all()
+    return {
+        "accounts": [
+            {
+                "id":           a.id,
+                "code":         a.code,
+                "name":         a.name,
+                "account_type": a.account_type.value,
+            }
+            for a in accounts
+        ]
+    }
+
 
 # ── Payment Voucher ───────────────────────
 
@@ -503,8 +619,18 @@ class PaymentVIn(BaseModel):
     payment_mode: str
     reference_number: Optional[str] = None
     bank_account: Optional[str] = None
+    cheque_number: Optional[str] = None     
+    cheque_date: Optional[date] = None 
     narration: Optional[str] = None
     payment_date: date
+
+
+class PaymentVEditIn(BaseModel):
+    reference_number: Optional[str] = None
+    bank_account: Optional[str] = None
+    narration: Optional[str] = None
+    cheque_number: Optional[str] = None
+    cheque_date: Optional[date] = None
 
 
 @payment_v_router.post("/", status_code=201)
@@ -534,7 +660,7 @@ async def create_payment_voucher(
             purchase.balance_due = purchase.grand_total - purchase.amount_paid
 
     payment = PaymentVoucher(
-        payment_number=pay_number(),
+        payment_number=await pay_number(db),
         payment_date=payload.payment_date,
         vendor_id=payload.vendor_id,
         purchase_id=purchase_id,
@@ -542,6 +668,8 @@ async def create_payment_voucher(
         payment_mode=payload.payment_mode,
         reference_number=payload.reference_number,
         bank_account=payload.bank_account,
+        cheque_number=payload.cheque_number,   
+        cheque_date=payload.cheque_date,
         narration=payload.narration,
         credit_account_id=credit_account.id,
     )
@@ -550,6 +678,9 @@ async def create_payment_voucher(
 
     journal = await post_payment_journal(db, payment, payload.vendor_id)
     payment.journal_id = journal.id
+
+    await db.commit()
+    await db.refresh(payment)
 
     return {"payment_number": payment.payment_number}
 
@@ -566,3 +697,64 @@ async def list_payment_vouchers(
         .offset((page - 1) * limit).limit(limit)
     )
     return result.scalars().all()
+
+@payment_v_router.patch("/{payment_number:path}")
+async def update_payment_voucher(
+    payment_number: str,
+    payload: PaymentVEditIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    result = await db.execute(select(PaymentVoucher).where(PaymentVoucher.payment_number == payment_number))
+    payment = result.scalar_one_or_none()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment voucher not found")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(payment, k, v)
+    await db.commit()
+    return {"message": "Payment voucher updated"}
+
+@payment_v_router.get("/{payment_number:path}")
+async def get_payment_voucher(
+    payment_number: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    result = await db.execute(
+        select(PaymentVoucher).where(PaymentVoucher.payment_number == payment_number)
+    )
+    payment = result.scalar_one_or_none()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment voucher not found")
+
+    vendor_name = None
+    vendor_result = await db.execute(select(Vendor).where(Vendor.id == payment.vendor_id))
+    vendor = vendor_result.scalar_one_or_none()
+    if vendor:
+        vendor_name = vendor.name
+
+    purchase_number = None
+    if payment.purchase_id:
+        p_result = await db.execute(select(Purchase).where(Purchase.id == payment.purchase_id))
+        purchase = p_result.scalar_one_or_none()
+        if purchase:
+            purchase_number = purchase.purchase_number
+
+    return {
+        "id": payment.id,
+        "payment_number": payment.payment_number,
+        "payment_date": payment.payment_date,
+        "vendor_id": payment.vendor_id,
+        "vendor_name": vendor_name,
+        "purchase_id": payment.purchase_id,
+        "purchase_number": purchase_number,
+        "amount": payment.amount,
+        "payment_mode": payment.payment_mode,
+        "reference_number": payment.reference_number,
+        "bank_account": payment.bank_account,
+        "narration": payment.narration,
+        "cheque_number": payment.cheque_number,
+        "cheque_date": payment.cheque_date,
+        "created_at": payment.created_at,
+    }
+

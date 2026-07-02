@@ -46,11 +46,11 @@ export default function InvoicesPage() {
 
   const columns = [
     { key: "invoice_number", label: "Invoice #", render: (r: any) => (
-      <span style={{ fontWeight: 600, color: "#0284c7", cursor: "pointer" }}
-        onClick={() => router.push(`/admin/accounting/invoices/${r.invoice_number}`)}>
-        {r.invoice_number}
-      </span>
-    )},
+  <span style={{ fontWeight: 600, color: "#0284c7", cursor: "pointer" }}
+    onClick={() => router.push(`/admin/accounting/invoices/${encodeURIComponent(r.invoice_number)}`)}>
+    {r.invoice_number}
+  </span>
+)},
     { key: "invoice_date", label: "Date", render: (r: any) => new Date(r.invoice_date).toLocaleDateString("en-IN") },
     { key: "billing_name", label: "Customer" },
     { key: "billing_city", label: "City" },
@@ -67,11 +67,11 @@ export default function InvoicesPage() {
     )},
     { key: "status", label: "Status", render: (r: any) => <StatusBadge status={r.status} /> },
     { key: "actions", label: "", render: (r: any) => (
-      <button onClick={() => router.push(`/admin/accounting/invoices/${r.invoice_number}`)}
-        style={{ fontSize: 12, color: "#0284c7", background: "none", border: "none", cursor: "pointer" }}>
-        View →
-      </button>
-    )},
+  <button onClick={() => router.push(`/admin/accounting/invoices/${encodeURIComponent(r.invoice_number)}`)}
+    style={{ fontSize: 12, color: "#0284c7", background: "none", border: "none", cursor: "pointer" }}>
+    View →
+  </button>
+)},
   ];
 
   return (

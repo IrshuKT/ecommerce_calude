@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
@@ -16,6 +17,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function SalesReturnsPage() {
+  const router = useRouter();
   const [returns, setReturns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
@@ -56,7 +58,15 @@ export default function SalesReturnsPage() {
   const fmt = (n: any) => `₹${parseFloat(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
 
   const columns = [
-    { key: "return_number", label: "Return #", render: (r: any) => <span style={{ fontWeight: 600, color: "#0284c7" }}>{r.return_number}</span> },
+    { key: "return_number", label: "Return #", render: (r: any) => (
+  <span
+    style={{ fontWeight: 600, color: "#0284c7", cursor: "pointer" }}
+    onClick={() => router.push(`/admin/accounting/returns/${encodeURIComponent(r.return_number)}`)}
+  >
+    {r.return_number}
+  </span>
+)},
+    { key: "customer_name", label: "Customer", render: (r: any) => <span style={{ fontSize: 13, fontWeight: 500 }}>{r.customer_name || "—"}</span> },
     { key: "return_date", label: "Date", render: (r: any) => new Date(r.return_date).toLocaleDateString("en-IN") },
     { key: "invoice_id", label: "Invoice", render: (r: any) => <span style={{ fontSize: 12, color: "#64748b" }}>#{r.invoice_id}</span> },
     { key: "total_amount", label: "Amount", render: (r: any) => <span style={{ fontWeight: 600 }}>{fmt(r.total_amount)}</span> },
@@ -79,7 +89,12 @@ export default function SalesReturnsPage() {
 
   return (
     <div style={{ padding: 32 }}>
-      <PageHeader title="Sales Returns" subtitle="Manage customer return requests and credit notes" />
+      <PageHeader
+        title="Sales Returns"
+        subtitle="Manage customer return requests and credit notes"
+        action={<button onClick={() => router.push("/admin/accounting/invoices/return")} className="btn-outline">+ Create Return</button>}
+      />
+
       <div style={{ display: "flex", gap: 6, marginBottom: 20 }}>
         {["all", "requested", "approved", "rejected"].map(s => (
           <button key={s} onClick={() => setFilter(s)} style={{
@@ -91,6 +106,7 @@ export default function SalesReturnsPage() {
           }}>{s}</button>
         ))}
       </div>
+
       <div className="card">
         <DataTable columns={columns} data={returns} loading={loading} emptyText="No returns found" keyField="return_number" />
       </div>

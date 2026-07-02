@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
+import Toast, { ToastData } from "@/components/admin/Toast";
 
 const STATUSES = ["all","placed","confirmed","processing","shipped","delivered","cancelled"];
 
@@ -24,6 +25,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("all");
   const [updating, setUpdating] = useState<string | null>(null);
+   const [toast, setToast] = useState<ToastData | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -38,14 +40,30 @@ export default function OrdersPage() {
   const updateStatus = async (orderNumber: string, status: string) => {
     setUpdating(orderNumber);
     try {
-      await api.patch(`/orders/${orderNumber}/status`, { status });
+      const res = await api.patch(`/orders/${orderNumber}/status`, { status });
+      const { invoice_result, invoice_number } = res.data;
+
+      let msg = `Order ${orderNumber} updated to "${status}".`;
+      let type: ToastData["type"] = "success";
+
+      if (invoice_result === "created") {
+        msg += ` Invoice ${invoice_number} created.`;
+      } else if (invoice_result === "failed") {
+        msg += ` Invoice creation failed.`;
+        type = "error";
+      }
+      setToast({ message: msg, type });
       await load();
-    } catch (e) { alert("Failed to update status"); } finally { setUpdating(null); }
+    } catch {
+      setToast({ message: "Failed to update status.", type: "error" });
+    } finally {
+      setUpdating(null);
+    }
   };
 
   const columns = [
     { key: "order_number", label: "Order #", render: (r: any) => (
-  <a href={`/admin/orders/${r.order_number}`} style={{ fontWeight: 600, color: "#0284c7", textDecoration: "none" }}>
+  <a href={`/admin/orders/${encodeURIComponent(r.order_number)}`} style={{ fontWeight: 600, color: "#0284c7", textDecoration: "none" }}>
     {r.order_number}
   </a>
 )},
@@ -66,6 +84,7 @@ export default function OrdersPage() {
 
   return (
     <div style={{ padding: 32 }}>
+      <Toast toast={toast} onClose={() => setToast(null)} />
       <PageHeader title="Orders" subtitle="Manage and update customer orders" />
 
       {/* Status filter tabs */}

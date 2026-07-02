@@ -161,6 +161,7 @@ async def get_product(
             selectinload(Product.attributes).selectinload(ProductAttribute.values),
             selectinload(Product.variants),
             selectinload(Product.images),
+            selectinload(Product.category),
         )
         .where(Product.slug == slug, Product.is_active == True)
     )
@@ -398,7 +399,7 @@ async def get_product_admin(
         select(Product)
         .options(
             selectinload(Product.variants),selectinload(Product.images),
-            selectinload(Product.attributes).selectinload(ProductAttribute.values)
+            selectinload(Product.attributes).selectinload(ProductAttribute.values),selectinload(Product.category),
         )
         .where(Product.id == product_id)
     )
@@ -417,6 +418,7 @@ async def get_product_admin(
     "is_featured": product.is_featured,
     "price_type": product.price_type,
     "category_id": product.category_id,
+    "category": {"id": product.category.id, "name": product.category.name} if product.category else None,
     "hsn_code": product.hsn_code,
     "gst_rate": float(product.gst_rate),
 
@@ -474,4 +476,84 @@ async def search_variants(q: str, limit: int = 8, db=Depends(get_db)):
     return [{"id": v.id, "sku": v.sku, "retail_price": float(v.retail_price),
              "stock_qty": v.stock_qty, "selected_attributes": v.selected_attributes,
              "product": {"name": v.product.name, "gst_rate": float(v.product.gst_rate),
-                         "hsn_code": v.product.hsn_code}} for v in variants]
+                         "hsn_code": v.product.hsn_code}} for v in variants] 
+
+
+ 
+@router.get("/{product_id}/avg-cost")
+async def get_product_avg_cost(
+    product_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """
+    Calculate weighted average cost per variant from received purchases.
+ 
+    Formula:
+        avg_cost = SUM(unit_price × received_qty) / SUM(received_qty)
+        for PurchaseItems where:
+          - variant belongs to this product
+          - received_qty > 0
+          - purchase status = 'received'
+    """
+    from app.models.accounting import Purchase, PurchaseItem, PurchaseStatus
+    from app.models.models import ProductVariant
+ 
+    # get all variants for this product
+    var_result = await db.execute(
+        select(ProductVariant).where(ProductVariant.product_id == product_id)
+    )
+    variants = var_result.scalars().all()
+    variant_ids = [v.id for v in variants]
+ 
+    if not variant_ids:
+        return []
+ 
+    # get all received purchase items for these variants
+    items_result = await db.execute(
+        select(PurchaseItem)
+        .join(Purchase, PurchaseItem.purchase_id == Purchase.id)
+        .where(
+            PurchaseItem.variant_id.in_(variant_ids),
+            PurchaseItem.received_qty > 0,
+            Purchase.status == PurchaseStatus.received,
+        )
+    )
+    purchase_items = items_result.scalars().all()
+ 
+    # group by variant_id and compute weighted avg
+    from collections import defaultdict
+    from decimal import Decimal
+ 
+    totals: dict = defaultdict(lambda: {"cost_sum": Decimal("0"), "qty_sum": Decimal("0"), "purchase_count": 0})
+ 
+    for item in purchase_items:
+        vid = item.variant_id
+        totals[vid]["cost_sum"]      += item.unit_price * item.received_qty
+        totals[vid]["qty_sum"]       += item.received_qty
+        totals[vid]["purchase_count"] += 1
+ 
+    # build response per variant
+    variant_map = {v.id: v for v in variants}
+    result = []
+ 
+    for v in variants:
+        vid = v.id
+        data = totals.get(vid)
+        if data and data["qty_sum"] > 0:
+            avg = (data["cost_sum"] / data["qty_sum"]).quantize(Decimal("0.01"))
+        else:
+            avg = None
+ 
+        result.append({
+            "variant_id":      vid,
+            "sku":             v.sku,
+            "stock_qty":       v.stock_qty,
+            "cost_price":      float(v.cost_price) if v.cost_price else None,  # static field
+            "avg_cost":        float(avg) if avg is not None else None,         # calculated
+            "total_received":  float(data["qty_sum"]) if data else 0,
+            "purchase_count":  data["purchase_count"] if data else 0,
+            "selected_attributes": v.selected_attributes,
+        })
+ 
+    return result

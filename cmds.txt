@@ -5,6 +5,9 @@ contact.ktcs@gmail.com
 npm run dev
 uvicorn app.main:app --reload
 
+connecting to db from vs code:
+ psql -U postgres -d postgres
+
 
 cd /d/ecommerce_calude/backend
 source venv/Scripts/activate

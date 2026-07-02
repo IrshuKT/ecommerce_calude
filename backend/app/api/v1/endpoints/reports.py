@@ -4,7 +4,7 @@ Reports: Ledger, Trial Balance, P&L, Balance Sheet, GST Returns
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func,case, and_
 from pydantic import BaseModel
 from typing import Optional, List
 from decimal import Decimal
@@ -18,6 +18,8 @@ from app.models.accounting import (
 from app.models.models import User
 from app.api.v1.endpoints.auth import get_admin_user
 from app.services.journal_service import get_account_balance
+from app.models.models import( Product,ProductVariant,Order,OrderItem,OrderStatus)
+
 
 router = APIRouter()
 
@@ -383,4 +385,387 @@ async def generate_gstr3b(
             "total_itc": itc_total,
         },
         "net_tax_payable": net_payable,
+    }
+
+# ════════════════════════════════════════════════════════════════════════════
+#  CASH BOOK
+# ════════════════════════════════════════════════════════════════════════════
+@router.get("/cash-book")
+async def cash_book(
+    from_date: date = Query(...),
+    to_date:   date = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    # find cash account (account_type=asset, code starts with your cash code)
+    cash_result = await db.execute(
+        select(Account).where(
+            Account.account_type == AccountType.asset,
+            Account.code.like("1010%"),   # ← adjust to your cash account code
+            Account.is_active == True,
+        ).limit(1)
+    )
+    cash_account = cash_result.scalar_one_or_none()
+    if not cash_account:
+        raise HTTPException(404, "Cash account not found. Adjust the code filter.")
+
+    # opening balance = all posted lines before from_date
+    ob = (await db.execute(
+        select(
+            func.coalesce(func.sum(JournalLine.debit),  0).label("dr"),
+            func.coalesce(func.sum(JournalLine.credit), 0).label("cr"),
+        )
+        .join(Journal, JournalLine.journal_id == Journal.id)
+        .where(
+            JournalLine.account_id == cash_account.id,
+            Journal.is_posted == True,
+            Journal.voucher_date < from_date,
+        )
+    )).one()
+    opening_balance = Decimal(str(ob.dr)) - Decimal(str(ob.cr))
+
+    lines = (await db.execute(
+        select(JournalLine, Journal)
+        .join(Journal, JournalLine.journal_id == Journal.id)
+        .where(
+            JournalLine.account_id == cash_account.id,
+            Journal.is_posted == True,
+            Journal.voucher_date >= from_date,
+            Journal.voucher_date <= to_date,
+        )
+        .order_by(Journal.voucher_date, Journal.id)
+    )).all()
+
+    entries        = []
+    running        = opening_balance
+    total_receipts = Decimal("0")
+    total_payments = Decimal("0")
+
+    for line, journal in lines:
+        dr = Decimal(str(line.debit  or 0))
+        cr = Decimal(str(line.credit or 0))
+        if dr > 0:
+            running += dr;  total_receipts += dr
+            tx_type, amount = "receipt", dr
+        else:
+            running -= cr;  total_payments += cr
+            tx_type, amount = "payment", cr
+
+        entries.append({
+            "date":        journal.voucher_date,
+            "particulars": line.narration or journal.narration or "",
+            "voucher_no":  journal.voucher_number or str(journal.id),
+            "type":        tx_type,
+            "amount":      float(round(amount,  2)),
+            "balance":     float(round(running, 2)),
+        })
+
+    return {
+        "from_date":       from_date,
+        "to_date":         to_date,
+        "opening_balance": float(round(opening_balance, 2)),
+        "total_receipts":  float(round(total_receipts,  2)),
+        "total_payments":  float(round(total_payments,  2)),
+        "closing_balance": float(round(running,         2)),
+        "entries":         entries,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  DAY BOOK
+# ════════════════════════════════════════════════════════════════════════════
+@router.get("/day-book")
+async def day_book(
+    from_date: date = Query(...),
+    to_date:   date = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    rows = (await db.execute(
+        select(JournalLine, Journal, Account)
+        .join(Journal,  JournalLine.journal_id == Journal.id)
+        .join(Account,  JournalLine.account_id == Account.id)
+        .where(
+            Journal.is_posted == True,
+            Journal.voucher_date >= from_date,
+            Journal.voucher_date <= to_date,
+        )
+        .order_by(Journal.voucher_date, Journal.id, JournalLine.id)
+    )).all()
+
+    entries      = []
+    total_debit  = Decimal("0")
+    total_credit = Decimal("0")
+
+    for line, journal, account in rows:
+        dr = Decimal(str(line.debit  or 0))
+        cr = Decimal(str(line.credit or 0))
+        total_debit  += dr
+        total_credit += cr
+        entries.append({
+            "date":         journal.voucher_date,
+            "voucher_no":   journal.voucher_number or str(journal.id),
+            "voucher_type": getattr(journal, "voucher_type", "Journal"),
+            "account_name": f"{account.code} — {account.name}",
+            "narration":    line.narration or journal.narration or "",
+            "debit":        float(dr),
+            "credit":       float(cr),
+        })
+
+    return {
+        "from_date":     from_date,
+        "to_date":       to_date,
+        "total_entries": len(entries),
+        "total_debit":   float(round(total_debit,  2)),
+        "total_credit":  float(round(total_credit, 2)),
+        "entries":       entries,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  LEDGER
+# ════════════════════════════════════════════════════════════════════════════
+@router.get("/ledger")
+async def ledger(
+    account_code: str  = Query(..., description="Account code e.g. 1001"),
+    from_date:    date = Query(...),
+    to_date:      date = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    account = (await db.execute(
+        select(Account).where(Account.code == account_code)
+    )).scalar_one_or_none()
+    if not account:
+        raise HTTPException(404, "Account not found.")
+
+    ob = (await db.execute(
+        select(
+            func.coalesce(func.sum(JournalLine.debit),  0).label("dr"),
+            func.coalesce(func.sum(JournalLine.credit), 0).label("cr"),
+        )
+        .join(Journal, JournalLine.journal_id == Journal.id)
+        .where(
+            JournalLine.account_id == account.id,
+            Journal.is_posted == True,
+            Journal.voucher_date < from_date,
+        )
+    )).one()
+
+    ob_dr = Decimal(str(ob.dr))
+    ob_cr = Decimal(str(ob.cr))
+    # debit-normal accounts: asset, expense  |  credit-normal: liability, equity, income
+    if account.account_type in (AccountType.asset, AccountType.expense):
+        opening_balance = ob_dr - ob_cr
+    else:
+        opening_balance = ob_cr - ob_dr
+
+    lines = (await db.execute(
+        select(JournalLine, Journal)
+        .join(Journal, JournalLine.journal_id == Journal.id)
+        .where(
+            JournalLine.account_id == account.id,
+            Journal.is_posted == True,
+            Journal.voucher_date >= from_date,
+            Journal.voucher_date <= to_date,
+        )
+        .order_by(Journal.voucher_date, Journal.id)
+    )).all()
+
+    entries      = []
+    running      = opening_balance
+    total_debit  = Decimal("0")
+    total_credit = Decimal("0")
+
+    for line, journal in lines:
+        dr = Decimal(str(line.debit  or 0))
+        cr = Decimal(str(line.credit or 0))
+        total_debit  += dr
+        total_credit += cr
+        if account.account_type in (AccountType.asset, AccountType.expense):
+            running += dr - cr
+        else:
+            running += cr - dr
+
+        entries.append({
+            "date":            journal.voucher_date,
+            "particulars":     line.narration or journal.narration or "",
+            "voucher_no":      journal.voucher_number or str(journal.id),
+            "debit":           float(dr),
+            "credit":          float(cr),
+            "running_balance": float(round(running, 2)),
+        })
+
+    return {
+        "account_code":    account.code,
+        "account_name":    f"{account.code} — {account.name}",
+        "from_date":       from_date,
+        "to_date":         to_date,
+        "opening_balance": float(round(opening_balance, 2)),
+        "total_debit":     float(round(total_debit,     2)),
+        "total_credit":    float(round(total_credit,    2)),
+        "closing_balance": float(round(running,         2)),
+        "entries":         entries,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+@router.get("/stock")
+async def stock_report(
+    from_date: date = Query(...),
+    to_date:   date = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    variants = (await db.execute(
+        select(ProductVariant, Product)
+        .join(Product, ProductVariant.product_id == Product.id)
+        .where(
+            ProductVariant.is_active == True,
+            ProductVariant.track_inventory == True,
+            Product.is_active == True,
+        )
+        .order_by(Product.name, ProductVariant.sku)
+    )).all()
+
+    items            = []
+    total_sold_qty   = 0
+    total_return_qty = 0
+    low_stock_count  = 0
+
+    for variant, product in variants:                          # ← loop header
+        # All-time movements (to compute current stock)
+        all_sold_result = await db.execute(                    # ← indented inside loop
+            select(func.coalesce(func.sum(OrderItem.quantity), 0))
+            .join(Order, OrderItem.order_id == Order.id)
+            .where(
+                OrderItem.variant_id == variant.id,
+                Order.status.not_in([OrderStatus.cancelled, OrderStatus.refunded]),
+            )
+        )
+        all_sold = int(all_sold_result.scalar() or 0)
+
+        all_returned_result = await db.execute(
+            select(func.coalesce(func.sum(OrderItem.quantity), 0))
+            .join(Order, OrderItem.order_id == Order.id)
+            .where(
+                OrderItem.variant_id == variant.id,
+                Order.status.in_([OrderStatus.cancelled, OrderStatus.refunded]),
+            )
+        )
+        all_returned = int(all_returned_result.scalar() or 0)
+
+        # In-range movements (for the report columns)
+        sold_result = await db.execute(
+            select(func.coalesce(func.sum(OrderItem.quantity), 0))
+            .join(Order, OrderItem.order_id == Order.id)
+            .where(
+                OrderItem.variant_id == variant.id,
+                Order.status.not_in([OrderStatus.cancelled, OrderStatus.refunded]),
+                func.date(Order.created_at) >= from_date,
+                func.date(Order.created_at) <= to_date,
+            )
+        )
+        sold_qty = int(sold_result.scalar() or 0)
+
+        returned_result = await db.execute(
+            select(func.coalesce(func.sum(OrderItem.quantity), 0))
+            .join(Order, OrderItem.order_id == Order.id)
+            .where(
+                OrderItem.variant_id == variant.id,
+                Order.status.in_([OrderStatus.cancelled, OrderStatus.refunded]),
+                func.date(Order.created_at) >= from_date,
+                func.date(Order.created_at) <= to_date,
+            )
+        )
+        returned_qty = int(returned_result.scalar() or 0)
+
+        current_stock = variant.stock_qty - all_sold + all_returned
+        threshold     = variant.low_stock_threshold or 5
+
+        total_sold_qty   += sold_qty
+        total_return_qty += returned_qty
+
+        if current_stock <= threshold:
+            low_stock_count += 1
+
+        attrs = ", ".join(
+            f"{k}: {v}" for k, v in (variant.selected_attributes or {}).items()
+        )
+
+        items.append({
+    "id":           variant.id,
+    "product":      product.name,        # was product_name
+    "sku":          variant.sku,
+    "attributes":   attrs,
+    "inward":       returned_qty,        # was returned_qty
+    "outward":      sold_qty,            # was sold_qty
+    "closing":      current_stock,       # was current_stock
+    "opening":      current_stock + sold_qty - returned_qty,  # back-derived
+    "low_threshold": threshold,
+    "is_low_stock": current_stock <= threshold,
+})
+
+    return {
+        "from_date":        from_date,
+        "to_date":          to_date,
+        "total_variants":   len(items),
+        "total_sold_qty":   total_sold_qty,
+        "total_return_qty": total_return_qty,
+        "low_stock_count":  low_stock_count,
+        "items":            items,
+    }
+# ════════════════════════════════════════════════════════════════════════════
+#  STOCK VALUATION
+#  stock_qty * cost_price per variant, as of today (stock_qty is live)
+# ════════════════════════════════════════════════════════════════════════════
+@router.get("/stock-value")
+async def stock_value(
+    as_of_date: date = Query(...),   # kept for API consistency; stock_qty is current
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    variants = (await db.execute(
+        select(ProductVariant, Product)
+        .join(Product, ProductVariant.product_id == Product.id)
+        .where(
+            ProductVariant.is_active == True,
+            ProductVariant.track_inventory == True,
+            ProductVariant.stock_qty > 0,
+            Product.is_active == True,
+        )
+        .order_by(Product.name, ProductVariant.sku)
+    )).all()
+
+    items       = []
+    total_qty   = 0
+    total_value = Decimal("0")
+
+    for variant, product in variants:
+        qty        = variant.stock_qty
+        cost_price = Decimal(str(variant.cost_price or 0))
+        value      = Decimal(qty) * cost_price
+        total_qty   += qty
+        total_value += value
+
+        attrs = ", ".join(
+            f"{k}: {v}" for k, v in (variant.selected_attributes or {}).items()
+        )
+
+        items.append({
+            "id":           variant.id,
+            "product_name": product.name,
+            "sku":          variant.sku,
+            "attributes":   attrs,
+            "qty":          qty,
+            "cost_price":   float(cost_price),
+            "retail_price": float(variant.retail_price or 0),
+            "value":        float(round(value, 2)),
+        })
+
+    return {
+        "as_of_date":  as_of_date,
+        "total_qty":   total_qty,
+        "total_value": float(round(total_value, 2)),
+        "items":       items,
     }

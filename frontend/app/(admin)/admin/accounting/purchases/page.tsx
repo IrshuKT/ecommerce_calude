@@ -98,7 +98,7 @@ export default function PurchasesPage() {
   const columns = [
     {
       key: "purchase_number", label: "Purchase #", render: (r: any) => (
-        <a href={`/admin/purchases/${encodeURIComponent(r.purchase_number)}`}
+        <a href={`/admin/purchases/${r.purchase_number}`}
           style={{ fontWeight: 600, color: "#0284c7", textDecoration: "none" }}>
           {r.purchase_number}
         </a>
@@ -125,27 +125,8 @@ export default function PurchasesPage() {
 
   return (
     <div style={{ padding: 32 }}>
-       <div style={{
-      display: "flex", alignItems: "center", gap: 6,
-      marginBottom: 16,
-      fontSize: 13, color: "#94a3b8",
-    }}>
-      <Link href="/admin/accounting"
-        style={{ color: "#94a3b8", textDecoration: "none" }}
-        onMouseEnter={(e) => (e.currentTarget.style.color = "#475569")}
-        onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
-      >
-        Accounting
-      </Link>
-      <span>/</span>
-      <span style={{ color: "#c2410c", fontWeight: 600 }}>
-        📦 Purchases
-      </span>
-    </div>
-
-    <PageHeader title="Purchases" subtitle="Track stock purchases from vendors"
-      action={<button className="btn-primary" onClick={() => setShowForm(true)}>+ New Purchase</button>} />
-
+      <PageHeader title="Purchases" subtitle="Track stock purchases from vendors"
+        action={<button className="btn-primary" onClick={() => setShowForm(true)}>+ New Purchase</button>} />
 
       {showForm && (
         <div className="card" style={{ padding: 24, marginBottom: 24 }}>

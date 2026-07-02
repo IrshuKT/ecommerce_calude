@@ -29,6 +29,7 @@ router.include_router(accounting.purchase_router, prefix="/purchases",   tags=["
 router.include_router(accounting.pr_router,       prefix="/purchase-returns", tags=["Purchase Returns"])
 router.include_router(accounting.receipt_router,  prefix="/receipts",    tags=["Receipts"])
 router.include_router(accounting.payment_v_router,prefix="/payment-vouchers", tags=["Payment Vouchers"])
+router.include_router(accounting.accounting_router, prefix="/accounting", tags=["Accounting"])
 router.include_router(reports.router,        prefix="/reports",          tags=["Reports"])
 router.include_router(reports.gst_router,    prefix="/gst",              tags=["GST Returns"])
 router.include_router(journals.router, prefix="/journals", tags=["Journals"])
