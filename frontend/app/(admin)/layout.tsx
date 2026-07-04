@@ -25,7 +25,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (!hydrated || isStaffLoginRoute) return;
-    if (!customerUser && !isInternalStaff) router.replace("/admin/staff-login");
+    if (!customerUser && !isInternalStaff) router.replace("/staff-login");
     else if (customerUser && customerUser.role !== "admin") router.replace("/shop");
   }, [customerUser, isInternalStaff, router, hydrated, isStaffLoginRoute]);
 

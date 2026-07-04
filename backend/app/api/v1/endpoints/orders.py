@@ -15,6 +15,7 @@ from app.api.v1.endpoints.auth import get_current_user, get_admin_user
 from app.core.config import settings
 from app.models.models import OrderTracking
 from app.services.journal_service import get_next_number
+from app.api.v1.endpoints.shared_auth import get_acting_staff_user, require_roles, ActingUser
 
 
 router = APIRouter()
@@ -154,7 +155,7 @@ async def trigger_invoice_for_order(db, order):
 @router.get("/admin/all")
 async def admin_all_orders(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager", "sales")),
     status: Optional[str] = None,
     page: int = 1,
     limit: int = 50,
@@ -199,8 +200,9 @@ async def update_order_status(
     order_number: str,
     payload: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager", "sales")),
 ):
+
     result = await db.execute(
         select(Order)
         .options(selectinload(Order.items))
@@ -296,7 +298,7 @@ async def update_order_status(
 async def admin_get_order(
     order_number: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager", "sales")),
 ):
     result = await db.execute(
         select(Order)

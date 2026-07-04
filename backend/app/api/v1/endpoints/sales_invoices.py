@@ -12,6 +12,7 @@ from app.models.accounting import SalesInvoice, SalesInvoiceItem, InvoiceStatus
 from app.models.models import User, OrderItem, ProductVariant, Product
 from app.api.v1.endpoints.auth import get_current_user, get_admin_user
 from app.services.journal_service import post_sales_invoice_journal, inv_number
+from app.api.v1.endpoints.shared_auth import get_acting_staff_user, require_roles, ActingUser
 
 router = APIRouter()
 
@@ -124,9 +125,13 @@ def _calc_line(item: ManualInvoiceItem, variant: ProductVariant, is_interstate: 
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/")
-async def list_invoices(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_admin_user),
-                         status: Optional[str] = None, from_date: Optional[date] = None,
-                         to_date: Optional[date] = None, page: int = Query(1, ge=1), limit: int = Query(20, le=100)):
+async def list_invoices(db: AsyncSession = Depends(get_db),
+                         current_user: ActingUser = Depends(require_roles("admin", "manager", "sales")),
+                         status: Optional[str] = None,
+                           from_date: Optional[date] = None,
+                         to_date: Optional[date] = None, 
+                         page: int = Query(1, ge=1),
+                           limit: int = Query(20, le=100)):
     query = select(SalesInvoice).order_by(SalesInvoice.invoice_date.desc())
     if status: query = query.where(SalesInvoice.status == status)
     if from_date: query = query.where(SalesInvoice.invoice_date >= from_date)
@@ -142,8 +147,11 @@ async def my_invoices(db: AsyncSession = Depends(get_db), current_user: User = D
 
 
 @router.post("/manual", status_code=201)
-async def create_manual_invoice(payload: ManualInvoicePayload, db: AsyncSession = Depends(get_db),
-                                 current_user: User = Depends(get_admin_user)):
+async def create_manual_invoice(
+    payload: ManualInvoicePayload,
+      db: AsyncSession = Depends(get_db),
+    current_user: ActingUser = Depends(require_roles("admin", "manager", "sales")),
+):
     cust_r = await db.execute(select(User).where(User.id == payload.customer_id))
     customer = cust_r.scalar_one_or_none()
     if not customer:
@@ -198,7 +206,10 @@ async def create_manual_invoice(payload: ManualInvoicePayload, db: AsyncSession 
 
 
 @router.post("/{invoice_number:path}/confirm")
-async def confirm_invoice(invoice_number: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_admin_user)):
+async def confirm_invoice(invoice_number: str,
+                        db: AsyncSession = Depends(get_db),
+                        current_user: ActingUser = Depends(require_roles("admin", "manager")),
+):
     inv_r = await db.execute(select(SalesInvoice).options(selectinload(SalesInvoice.items)).where(SalesInvoice.invoice_number == invoice_number))
     invoice = inv_r.scalar_one_or_none()
     if not invoice:
@@ -216,7 +227,10 @@ async def confirm_invoice(invoice_number: str, db: AsyncSession = Depends(get_db
 
 
 @router.post("/{invoice_number:path}/cancel")
-async def cancel_invoice(invoice_number: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_admin_user)):
+async def cancel_invoice(invoice_number: str,
+                        db: AsyncSession = Depends(get_db),
+                        current_user: ActingUser = Depends(require_roles("admin", "manager")),
+):
     inv_r = await db.execute(select(SalesInvoice).where(SalesInvoice.invoice_number == invoice_number))
     invoice = inv_r.scalar_one_or_none()
     if not invoice:

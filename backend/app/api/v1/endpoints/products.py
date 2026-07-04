@@ -5,7 +5,7 @@ from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from typing import Optional, List
 from decimal import Decimal
-
+from app.api.v1.endpoints.shared_auth import get_acting_staff_user, ActingUser
 from app.db.session import get_db
 from app.models.models import Product, ProductVariant, ProductAttribute, ProductAttributeValue, ProductImage, Category, User
 from app.api.v1.endpoints.auth import get_current_user, get_admin_user
@@ -557,3 +557,55 @@ async def get_product_avg_cost(
         })
  
     return result
+
+
+class StaffVariantOut(BaseModel):
+    variant_id: int
+    product_name: str
+    sku: str
+    selected_attributes: dict
+    retail_price: Decimal
+    stock_qty: int
+    primary_image: Optional[str] = None
+ 
+ 
+@router.get("/staff-picker", response_model=List[StaffVariantOut])
+async def staff_product_picker(
+    q: str = Query("", description="Search by product name or SKU"),
+    limit: int = Query(20, le=50),
+    db: AsyncSession = Depends(get_db),
+    _: ActingUser = Depends(get_acting_staff_user),
+):
+    """
+    Product/variant search for staff building a manual invoice.
+    Deliberately excludes cost_price and trade_price — only what's
+    needed to pick an item and see its retail price and stock.
+    """
+    query = (
+        select(ProductVariant)
+        .join(Product)
+        .options(selectinload(ProductVariant.product).selectinload(Product.images))
+        .where(ProductVariant.is_active == True, Product.is_active == True)
+    )
+    if q:
+        like = f"%{q}%"
+        query = query.where((Product.name.ilike(like)) | (ProductVariant.sku.ilike(like)))
+ 
+    result = await db.execute(query.limit(limit))
+    variants = result.scalars().all()
+ 
+    out = []
+    for v in variants:
+        primary = next((img.url for img in v.product.images if img.is_primary), None)
+        if not primary and v.product.images:
+            primary = v.product.images[0].url
+        out.append(StaffVariantOut(
+            variant_id=v.id,
+            product_name=v.product.name,
+            sku=v.sku,
+            selected_attributes=v.selected_attributes or {},
+            retail_price=v.retail_price,
+            stock_qty=v.stock_qty,
+            primary_image=primary,
+        ))
+    return out

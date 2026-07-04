@@ -1,11 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
+import { useStaffAuthStore } from "@/store/staffAuth";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
 import Toast, { ToastData } from "@/components/admin/Toast";
 
 const STATUSES = ["all","placed","confirmed","processing","shipped","delivered","cancelled"];
+const ALL_STATUS_OPTIONS = ["placed","confirmed","processing","shipped","delivered","cancelled"];
+const FORWARD_STATUS_OPTIONS = ["confirmed","processing","shipped","delivered"];
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, { bg: string; color: string }> = {
@@ -21,6 +24,10 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function OrdersPage() {
+  const staffUser = useStaffAuthStore((s) => s.user);
+  const isSales = staffUser?.role === "sales";
+  const statusOptions = isSales ? FORWARD_STATUS_OPTIONS : ALL_STATUS_OPTIONS;
+
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -54,8 +61,8 @@ export default function OrdersPage() {
       }
       setToast({ message: msg, type });
       await load();
-    } catch {
-      setToast({ message: "Failed to update status.", type: "error" });
+    } catch (e: any) {
+      setToast({ message: e.response?.data?.detail || "Failed to update status.", type: "error" });
     } finally {
       setUpdating(null);
     }
@@ -73,13 +80,20 @@ export default function OrdersPage() {
     { key: "payment_method", label: "Payment", render: (r: any) => <span style={{ textTransform: "uppercase", fontSize: 12, background: "#f1f5f9", padding: "2px 8px", borderRadius: 4 }}>{r.payment_method}</span> },
     { key: "status", label: "Status", render: (r: any) => <StatusBadge status={r.status} /> },
     { key: "created_at", label: "Date", render: (r: any) => new Date(r.created_at).toLocaleDateString("en-IN") },
-    { key: "actions", label: "Action", render: (r: any) => (
-      <select value={r.status} disabled={updating === r.order_number}
-        onChange={(e) => updateStatus(r.order_number, e.target.value)}
-        style={{ fontSize: 12, padding: "4px 8px", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", cursor: "pointer" }}>
-        {["placed","confirmed","processing","shipped","delivered","cancelled"].map(s => <option key={s} value={s}>{s}</option>)}
-      </select>
-    )},
+    { key: "actions", label: "Action", render: (r: any) => {
+      // Sales can only move an order forward — if it's already past their
+      // allowed range (e.g. cancelled), don't offer a dropdown at all.
+      const canEdit = !isSales || statusOptions.includes(r.status) || r.status === "placed";
+      if (!canEdit) return <span style={{ fontSize: 12, color: "#94a3b8" }}>—</span>;
+      return (
+        <select value={r.status} disabled={updating === r.order_number}
+          onChange={(e) => updateStatus(r.order_number, e.target.value)}
+          style={{ fontSize: 12, padding: "4px 8px", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", cursor: "pointer" }}>
+          {r.status === "placed" && <option value="placed">placed</option>}
+          {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      );
+    }},
   ];
 
   return (
