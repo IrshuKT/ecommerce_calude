@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
+import { useStaffAuthStore } from "@/store/staffAuth";
 import { useRouter } from "next/navigation";
 import { useSettings } from "@/app/context/SettingsContext";
 import { useState, useEffect } from "react";
@@ -20,34 +21,46 @@ const accountingItems = [
 ];
 
 const nav = [
-  { label: "Dashboard",  href: "/admin",           icon: "▦" },
-  { label: "Products",   href: "/admin/products",   icon: "🪟" },
-  { label: "Orders",     href: "/admin/orders",     icon: "📦" },
-  { label: "Customers",  href: "/admin/customers",  icon: "👥" },
-  { label: "Vendors",    href: "/admin/vendors",     icon: "🏭" },
-  
-  { label: "Accounting", href: "/admin/accounting", icon: "🧾", expandable: true },
-  { label: "Reports",    href: "/admin/reports",    icon: "📊" },
-  { label: "Coupons",    href: "/admin/coupons",    icon: "🏷️" },
-  { label: "Settings",   href: "/admin/settings",   icon: "⚙️" },
+  { key: "dashboard",  label: "Dashboard",  href: "/admin",           icon: "▦" },
+  { key: "products",   label: "Products",   href: "/admin/products",   icon: "🪟" },
+  { key: "orders",     label: "Orders",     href: "/admin/orders",     icon: "📦" },
+  { key: "customers",  label: "Customers",  href: "/admin/customers",  icon: "👥" },
+  { key: "vendors",    label: "Vendors",    href: "/admin/vendors",     icon: "🏭" },
+  { key: "users",      label: "Users",      href: "/admin/users",       icon: "🔑" },
+  { key: "accounting", label: "Accounting", href: "/admin/accounting", icon: "🧾", expandable: true },
+  { key: "reports",    label: "Reports",    href: "/admin/reports",    icon: "📊" },
+  { key: "coupons",    label: "Coupons",    href: "/admin/coupons",    icon: "🏷️" },
+  { key: "settings",   label: "Settings",   href: "/admin/settings",   icon: "⚙️" },
 ];
 
 export default function AdminSidebar() {
   const pathname = usePathname();
-  const { user, logout } = useAuthStore();
+  const { user: customerUser, logout: customerLogout } = useAuthStore();
+  const { user: staffUser, menus: staffMenus, logout: staffLogout } = useStaffAuthStore();
   const router = useRouter();
   const settings = useSettings();
 
-  const isAccountingActive = pathname.startsWith("/admin/accounting");
+  const isCustomerAdmin = customerUser?.role === "admin";
 
-  // auto-expand when on any accounting page
+  const visibleNav = isCustomerAdmin
+    ? nav
+    : nav.filter((item) => staffMenus.includes(item.key));
+
+  const displayName = customerUser?.name || staffUser?.name || "";
+  const displayRole = isCustomerAdmin ? "Administrator" : (staffUser?.role || "");
+
+  const isAccountingActive = pathname.startsWith("/admin/accounting");
   const [accountingOpen, setAccountingOpen] = useState(isAccountingActive);
 
   useEffect(() => {
     if (isAccountingActive) setAccountingOpen(true);
   }, [isAccountingActive]);
 
-  const handleLogout = () => { logout(); router.replace("/login"); };
+  const handleLogout = () => {
+    if (isCustomerAdmin) { customerLogout(); window.location.href = "/"; }
+    else { staffLogout(); window.location.href = "/staff-login"; }
+  };
+
   const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8000";
 
   return (
@@ -56,7 +69,6 @@ export default function AdminSidebar() {
       display: "flex", flexDirection: "column", height: "100vh",
       position: "sticky", top: 0,
     }}>
-      {/* Logo */}
       <div style={{ padding: "20px 20px 16px", borderBottom: "1px solid #e2e8f0" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 36, height: 36, borderRadius: 7, background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
@@ -81,16 +93,13 @@ export default function AdminSidebar() {
         </div>
       </div>
 
-      {/* Nav */}
       <nav style={{ flex: 1, padding: "12px 10px", overflowY: "auto" }}>
-        {nav.map((item) => {
+        {visibleNav.map((item) => {
           const active = pathname === item.href || (item.href !== "/admin" && pathname.startsWith(item.href));
 
-          // ── Accounting with expandable sub-menu ──
           if (item.expandable) {
             return (
               <div key={item.href}>
-                {/* Accounting parent row */}
                 <div
                   onClick={() => setAccountingOpen((o) => !o)}
                   style={{
@@ -109,7 +118,6 @@ export default function AdminSidebar() {
                     <span style={{ fontSize: 16 }}>{item.icon}</span>
                     {item.label}
                   </div>
-                  {/* chevron */}
                   <span style={{
                     fontSize: 10, color: "#94a3b8",
                     transform: accountingOpen ? "rotate(180deg)" : "rotate(0deg)",
@@ -118,7 +126,6 @@ export default function AdminSidebar() {
                   }}>▼</span>
                 </div>
 
-                {/* Sub-items */}
                 {accountingOpen && (
                   <div style={{
                     marginLeft: 12,
@@ -158,7 +165,6 @@ export default function AdminSidebar() {
             );
           }
 
-          // ── Regular nav item ──
           return (
             <Link key={item.href} href={item.href} style={{
               display: "flex", alignItems: "center", gap: 10,
@@ -175,15 +181,14 @@ export default function AdminSidebar() {
         })}
       </nav>
 
-      {/* User */}
       <div style={{ padding: "12px 16px", borderTop: "1px solid #e2e8f0" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#0284c7", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: 13, fontWeight: 600 }}>
-            {user?.name?.charAt(0).toUpperCase()}
+            {displayName?.charAt(0).toUpperCase()}
           </div>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 500, color: "#1e293b" }}>{user?.name}</div>
-            <div style={{ fontSize: 11, color: "#94a3b8" }}>Administrator</div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: "#1e293b" }}>{displayName}</div>
+            <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "capitalize" }}>{displayRole}</div>
           </div>
         </div>
         <button onClick={handleLogout} style={{

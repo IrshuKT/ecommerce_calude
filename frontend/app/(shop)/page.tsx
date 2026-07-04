@@ -83,14 +83,14 @@ export default function HomePage() {
     <div>
       {/* Hero */}
       <section style={{ background: "linear-gradient(135deg, #0369a1 0%, #0284c7 50%, #0ea5e9 100%)", padding: "80px 24px", textAlign: "center", color: "white" }}>
-        <div style={{ maxWidth: 700, margin: "0 auto" }}>
+        <div style={{ maxWidth: 900, margin: "0 auto" }}>
           {user?.is_trade_approved && (
             <div style={{ display: "inline-block", background: "rgba(255,255,255,0.2)", borderRadius: 20, padding: "4px 16px", fontSize: 13, fontWeight: 600, marginBottom: 16 }}>
               🟢 Trade Account Active — You're seeing trade prices
             </div>
           )}
           <h1 style={{ fontSize: 48, fontWeight: 700, margin: "0 0 16px", lineHeight: 1.15 }}>
-            {settings.company_name || "Premium Glass"}<br /> Online Shop
+            {settings.company_name || "KT'S Hub"}<br /> Online Shop
           </h1>
           <p style={{ fontSize: 18, opacity: 0.9, margin: "0 0 32px", lineHeight: 1.6 }}>
             {settings.tagline || "Clear glass, mirrors, frosted panels and more."}

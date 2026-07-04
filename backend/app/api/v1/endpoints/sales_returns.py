@@ -8,10 +8,10 @@ from decimal import Decimal
 from datetime import date
 from app.db.session import get_db
 from app.models.accounting import SalesInvoice, SalesReturn, SalesReturnItem, ReturnStatus, InvoiceStatus
-from app.models.models import User,ProductVariant
+from app.models.models import User,ProductVariant, StockTransaction
 from app.api.v1.endpoints.auth import get_current_user, get_admin_user
 from app.services.journal_service import post_sales_return_journal, ret_number, cn_number
-from app.models.stock_transactions import StockTransaction
+
 
 router = APIRouter()
 

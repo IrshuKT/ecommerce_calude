@@ -11,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
 
 
+
 class UserRole(str, enum.Enum):
     customer = "customer"
     admin = "admin"
@@ -64,6 +65,25 @@ class User(Base):
     addresses: Mapped[List["Address"]] = relationship("Address", back_populates="user")
     orders: Mapped[List["Order"]] = relationship("Order", back_populates="user")
     cart_items: Mapped[List["CartItem"]] = relationship("CartItem", back_populates="user")
+
+class InternalRole(str, enum.Enum):
+    admin = "admin"
+    manager = "manager"
+    sales = "sales"
+    inventory = "inventory"
+
+class InternalUser(Base):
+    __tablename__ = "internal_users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    email: Mapped[str] = mapped_column(String(150), unique=True, index=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(15), unique=True, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(255))
+    role: Mapped[InternalRole] = mapped_column(Enum(InternalRole), default=InternalRole.sales)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
+    stock_transactions: Mapped[List["StockTransaction"]] = relationship("StockTransaction", back_populates="created_by")   
 
 
 class Address(Base):
@@ -297,3 +317,28 @@ class CompanySettings(Base):
     website: Mapped[Optional[str]] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class StockTxnType(str, enum.Enum):
+    in_ = "in"
+    out = "out"
+    adjustment = "adjustment"
+
+
+class StockTransaction(Base):
+    __tablename__ = "stock_transactions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    variant_id: Mapped[int] = mapped_column(ForeignKey("product_variants.id", ondelete="CASCADE"), index=True)
+    txn_type: Mapped[StockTxnType] = mapped_column(
+        Enum(StockTxnType, values_callable=lambda x: [e.value for e in x])
+    )
+    qty_change: Mapped[int] = mapped_column(Integer)
+    qty_before: Mapped[int] = mapped_column(Integer)
+    qty_after: Mapped[int] = mapped_column(Integer)
+    reference_type: Mapped[Optional[str]] = mapped_column(String(50))
+    reference_id: Mapped[Optional[str]] = mapped_column(String(100))
+    note: Mapped[Optional[str]] = mapped_column(String(500))
+    created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("internal_users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    variant: Mapped["ProductVariant"] = relationship("ProductVariant")
+    created_by: Mapped[Optional["InternalUser"]] = relationship("InternalUser", back_populates="stock_transactions")

@@ -1,17 +1,28 @@
 "use client";
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
+import { useAuthStore } from "@/store/auth";
+import { useStaffAuthStore } from "@/store/staffAuth";
 import StatCard from "@/components/admin/StatCard";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
-import { SettingsProvider } from "@/app/context/SettingsContext";
 
 export default function AdminDashboard() {
+  const customerUser = useAuthStore((s) => s.user);
+  const staffUser = useStaffAuthStore((s) => s.user);
+  const isCustomerAdmin = customerUser?.role === "admin";
+
   const [stats, setStats] = useState({ orders: 0, revenue: 0, customers: 0, pending: 0 });
   const [recentOrders, setRecentOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // The orders/admin/all endpoint only accepts customer-admin tokens right now.
+    // Staff sessions skip this call entirely rather than hitting a guaranteed 401.
+    if (!isCustomerAdmin) {
+      setLoading(false);
+      return;
+    }
     const load = async () => {
       try {
         const [ordersRes] = await Promise.all([
@@ -26,14 +37,13 @@ export default function AdminDashboard() {
           pending: orders.filter((o: any) => o.status === "placed").length,
         });
       } catch {
-        // API may not have admin/all endpoint yet — use mock
         setStats({ orders: 0, revenue: 0, customers: 0, pending: 0 });
       } finally {
         setLoading(false);
       }
     };
     load();
-  }, []);
+  }, [isCustomerAdmin]);
 
   const orderColumns = [
     { key: "order_number", label: "Order #" },
@@ -45,53 +55,70 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <SettingsProvider> 
     <div style={{ padding: 32 }}>
-      <PageHeader title="Dashboard" subtitle={`Good ${greeting()}, here's what's happening today.`} />
+      <PageHeader
+        title="Dashboard"
+        subtitle={
+          isCustomerAdmin
+            ? `Good ${greeting()}, here's what's happening today.`
+            : `Welcome, ${staffUser?.name}. Use the sidebar to access your sections.`
+        }
+      />
 
-      {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 32 }}>
-        <StatCard label="Total Orders"    value={stats.orders}   icon="📦" color="#0284c7" sub="All time" />
-        <StatCard label="Total Revenue"   value={`₹${stats.revenue.toLocaleString("en-IN")}`} icon="💰" color="#16a34a" sub="Gross sales" />
-        <StatCard label="Pending Orders"  value={stats.pending}  icon="⏳" color="#d97706" sub="Needs action" />
-        <StatCard label="Customers"       value={stats.customers} icon="👥" color="#7c3aed" sub="Registered" />
-      </div>
+      {isCustomerAdmin ? (
+        <>
+          {/* Stats */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 32 }}>
+            <StatCard label="Total Orders"    value={stats.orders}   icon="📦" color="#0284c7" sub="All time" />
+            <StatCard label="Total Revenue"   value={`₹${stats.revenue.toLocaleString("en-IN")}`} icon="💰" color="#16a34a" sub="Gross sales" />
+            <StatCard label="Pending Orders"  value={stats.pending}  icon="⏳" color="#d97706" sub="Needs action" />
+            <StatCard label="Customers"       value={stats.customers} icon="👥" color="#7c3aed" sub="Registered" />
+          </div>
 
-      {/* Quick links */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 32 }}>
-        {[
-          { label: "Add Product",   href: "/admin/products/new",  icon: "➕", color: "#0284c7" },
-          { label: "New Purchase",  href: "/admin/purchases/new", icon: "🛒", color: "#16a34a" },
-          { label: "Add Vendor",    href: "/admin/vendors/new",   icon: "🏭", color: "#7c3aed" },
-          { label: "View Reports",  href: "/admin/reports",       icon: "📊", color: "#d97706" },
-          { label: "GST Returns",   href: "/admin/reports#gst",   icon: "🧾", color: "#db2777" },
-          { label: "Add Coupon",    href: "/admin/coupons/new",   icon: "🏷️", color: "#0891b2" },
-        ].map((q) => (
-          <a key={q.href} href={q.href} style={{
-            display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
-            padding: "16px 12px", borderRadius: 10, background: "white",
-            border: "1px solid #e2e8f0", textDecoration: "none", transition: "all 0.15s",
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = q.color; (e.currentTarget as HTMLElement).style.background = `${q.color}08`; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0"; (e.currentTarget as HTMLElement).style.background = "white"; }}>
-            <span style={{ fontSize: 22 }}>{q.icon}</span>
-            <span style={{ fontSize: 12, fontWeight: 500, color: "#475569", textAlign: "center" }}>{q.label}</span>
-          </a>
-        ))}
-      </div>
+          {/* Quick links */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 32 }}>
+            {[
+              { label: "Add Product",   href: "/admin/products/new",  icon: "➕", color: "#0284c7" },
+              { label: "New Purchase",  href: "/admin/purchases/new", icon: "🛒", color: "#16a34a" },
+              { label: "Add Vendor",    href: "/admin/vendors/new",   icon: "🏭", color: "#7c3aed" },
+              { label: "View Reports",  href: "/admin/reports",       icon: "📊", color: "#d97706" },
+              { label: "GST Returns",   href: "/admin/reports#gst",   icon: "🧾", color: "#db2777" },
+              { label: "Add Coupon",    href: "/admin/coupons/new",   icon: "🏷️", color: "#0891b2" },
+            ].map((q) => (
+              <a key={q.href} href={q.href} style={{
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+                padding: "16px 12px", borderRadius: 10, background: "white",
+                border: "1px solid #e2e8f0", textDecoration: "none", transition: "all 0.15s",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = q.color; (e.currentTarget as HTMLElement).style.background = `${q.color}08`; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0"; (e.currentTarget as HTMLElement).style.background = "white"; }}>
+                <span style={{ fontSize: 22 }}>{q.icon}</span>
+                <span style={{ fontSize: 12, fontWeight: 500, color: "#475569", textAlign: "center" }}>{q.label}</span>
+              </a>
+            ))}
+          </div>
 
-      {/* Recent Orders */}
-      <div className="card">
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid #e2e8f0" }}>
-          <h2 style={{ fontSize: 15, fontWeight: 600, color: "#1e293b", margin: 0 }}>Recent Orders</h2>
+          {/* Recent Orders */}
+          <div className="card">
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid #e2e8f0" }}>
+              <h2 style={{ fontSize: 15, fontWeight: 600, color: "#1e293b", margin: 0 }}>Recent Orders</h2>
+            </div>
+            <DataTable columns={orderColumns} data={recentOrders} loading={loading} emptyText="No orders yet" />
+            <div style={{ padding: "12px 20px", borderTop: "1px solid #e2e8f0", textAlign: "right" }}>
+              <a href="/admin/orders" style={{ fontSize: 13, color: "#0284c7", textDecoration: "none" }}>View all orders →</a>
+            </div>
+          </div>
+        </>
+      ) : (
+        // Staff view: dashboard stats aren't wired up for staff tokens yet.
+        // Show a simple landing state instead of calling customer-only endpoints.
+        <div className="card" style={{ padding: 32, textAlign: "center" }}>
+          <p style={{ fontSize: 14, color: "#64748b", margin: 0 }}>
+            Use the sidebar to get to your sections.
+          </p>
         </div>
-        <DataTable columns={orderColumns} data={recentOrders} loading={loading} emptyText="No orders yet" />
-        <div style={{ padding: "12px 20px", borderTop: "1px solid #e2e8f0", textAlign: "right" }}>
-          <a href="/admin/orders" style={{ fontSize: 13, color: "#0284c7", textDecoration: "none" }}>View all orders →</a>
-        </div>
-      </div>
+      )}
     </div>
-    </SettingsProvider>
   );
 }
 

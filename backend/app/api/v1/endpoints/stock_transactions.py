@@ -12,8 +12,7 @@ from typing import Optional, List
 import enum
 
 from app.db.session import get_db
-from app.models.models import ProductVariant, Product, User
-from app.models.stock_transactions import StockTransaction
+from app.models.models import ProductVariant, Product, User,StockTransaction
 from app.api.v1.endpoints.auth import get_admin_user
 
 
