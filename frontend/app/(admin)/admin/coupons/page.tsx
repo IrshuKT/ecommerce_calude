@@ -5,7 +5,7 @@ import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
 
 export default function CouponsPage() {
-  const [coupons, setCoupons] = useState([]);
+  const [coupons, setCoupons] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ code: "", coupon_type: "percentage", value: "", min_order_amount: "", max_discount_amount: "", usage_limit: "", valid_until: "", description: "" });

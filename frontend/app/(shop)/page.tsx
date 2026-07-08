@@ -5,6 +5,14 @@ import api from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 import { usePublicSettings } from "@/app/context/PublicSettingsContext";
 
+interface Variant {
+  id: number;
+  sku?: string;
+  selected_attributes?: Record<string, string>;
+  retail_price?: string | number;   
+  stock_qty?: number;
+}
+
 interface Product {
   id: number;
   name: string;
@@ -14,16 +22,26 @@ interface Product {
   min_price: number;
   primary_image: string;
   is_trade_price: boolean;
+  variants?: Variant[];
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8000";
 
 function ProductCard({ product }: { product: Product }) {
+  const [showVariants, setShowVariants] = useState(false);
+  const variantCount = product.variants?.length || 0;
+
+  const toggleVariants = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowVariants(v => !v);
+  };
+
   return (
     <Link href={`/shop/${product.slug}`} style={{ textDecoration: "none" }}>
       <div style={{
         background: "white", borderRadius: 12, border: "1px solid #e2e8f0",
-        overflow: "hidden", transition: "all 0.2s", cursor: "pointer",
+        overflow: "hidden", transition: "all 0.2s", cursor: "pointer", position: "relative",
       }}
         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-3px)"; (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 24px rgba(0,0,0,0.08)"; }}
         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = "none"; (e.currentTarget as HTMLElement).style.boxShadow = "none"; }}
@@ -35,10 +53,55 @@ function ProductCard({ product }: { product: Product }) {
             : <span style={{ fontSize: 48 }}>🪟</span>
           }
         </div>
+
         {/* Info */}
         <div style={{ padding: 16 }}>
           <h3 style={{ fontSize: 15, fontWeight: 600, color: "#1e293b", margin: "0 0 4px", lineHeight: 1.3 }}>{product.name}</h3>
-          {product.short_description && <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 12px", lineHeight: 1.4 }}>{product.short_description}</p>}
+          {product.short_description && <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 8px", lineHeight: 1.4 }}>{product.short_description}</p>}
+
+          {variantCount > 1 && (
+            <div style={{ position: "relative", marginBottom: 8 }}>
+              <span
+                onClick={toggleVariants}
+                style={{ fontSize: 12, color: "#0284c7", fontWeight: 500, cursor: "pointer", textDecoration: "underline" }}
+              >
+                {variantCount} variants available
+              </span>
+
+              {showVariants && (
+                <div
+                  onClick={e => { e.preventDefault(); e.stopPropagation(); }}
+                  style={{
+                    position: "absolute", top: "100%", left: 0, marginTop: 6, zIndex: 20,
+                    background: "white", border: "1px solid #e2e8f0", borderRadius: 8,
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 200, padding: 8,
+                  }}
+                >
+               {product.variants!.map(v => (
+  <div key={v.id} style={{
+    display: "flex", justifyContent: "space-between", gap: 12,
+    fontSize: 12, color: "#475569", padding: "5px 6px", borderRadius: 5,
+  }}>
+    <span>{Object.values(v.selected_attributes || {}).join(" / ") || v.sku}</span>
+    <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      {v.retail_price != null && (
+        <span style={{ color: "#0284c7", fontWeight: 600 }}>
+          ₹{parseFloat(String(v.retail_price)).toLocaleString("en-IN")}
+        </span>
+      )}
+      {v.stock_qty != null && (
+        <span style={{ color: v.stock_qty > 0 ? "#16a34a" : "#dc2626", fontSize: 11 }}>
+          {v.stock_qty > 0 ? `${v.stock_qty} in stock` : "Out of stock"}
+        </span>
+      )}
+    </span>
+  </div>
+))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
               {product.is_trade_price && <div style={{ fontSize: 10, fontWeight: 600, color: "#065f46", background: "#d1fae5", padding: "1px 6px", borderRadius: 3, marginBottom: 3, display: "inline-block" }}>TRADE PRICE</div>}

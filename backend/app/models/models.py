@@ -72,6 +72,7 @@ class InternalRole(str, enum.Enum):
     sales = "sales"
     inventory = "inventory"
 
+"""  """
 class InternalUser(Base):
     __tablename__ = "internal_users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -83,8 +84,8 @@ class InternalUser(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
-    stock_transactions: Mapped[List["StockTransaction"]] = relationship("StockTransaction", back_populates="created_by")   
-
+    stock_transactions: Mapped[List["StockTransaction"]] = relationship(
+        "StockTransaction", back_populates="created_by")
 
 class Address(Base):
     __tablename__ = "addresses"
@@ -338,7 +339,11 @@ class StockTransaction(Base):
     reference_type: Mapped[Optional[str]] = mapped_column(String(50))
     reference_id: Mapped[Optional[str]] = mapped_column(String(100))
     note: Mapped[Optional[str]] = mapped_column(String(500))
-    created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("internal_users.id", ondelete="SET NULL"))
+    created_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("internal_users.id", ondelete="SET NULL")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     variant: Mapped["ProductVariant"] = relationship("ProductVariant")
-    created_by: Mapped[Optional["InternalUser"]] = relationship("InternalUser", back_populates="stock_transactions")
+    created_by: Mapped[Optional["InternalUser"]] = relationship(
+        "InternalUser", back_populates="stock_transactions"
+    )

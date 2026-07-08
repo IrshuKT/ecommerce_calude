@@ -5,7 +5,7 @@ from app.api.v1.endpoints import (
     auth, users, products, categories, cart, orders,
     coupons, payments, admin,journals,
     sales_invoices, sales_returns, accounting, reports,stock_transactions
-)
+,pos_endpoint)
 
 router = APIRouter()
 router.include_router(auth.router,           prefix="/auth",             tags=["Auth"])
@@ -18,6 +18,7 @@ router.include_router(orders.router,         prefix="/orders",           tags=["
 router.include_router(payments.router,       prefix="/payments",         tags=["Payments"])
 router.include_router(admin.router,          prefix="/admin",            tags=["Admin"])
 router.include_router(stock_transactions.router, prefix="/products", tags=["Stock Transactions"])
+router.include_router(pos_endpoint.router, prefix="/pos", tags=["POS Sale"])
 
 # ── Accounting ──────────────────────────
 router.include_router(settings.router,     prefix="/settings",        tags=["Company Settings"])

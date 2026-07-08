@@ -1,0 +1,7 @@
+cd ~/Desktop/ecommerce_calude/frontend
+npm run build
+copy public .next\standalone\public -Recurse -Force
+copy .next\static .next\standalone\.next\static -Recurse -Force
+cd ..\desktop-launcher
+xcopy ..\frontend\.next\standalone\* resources\frontend\ /E /I /Y
+npm run dist

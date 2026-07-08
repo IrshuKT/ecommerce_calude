@@ -20,8 +20,20 @@ const accountingItems = [
   { label: "Opening Balances",  href: "/admin/accounting/opening-balances", icon: "⚖️" },
 ];
 
+const posItems = [
+  { label: "New Sale", href: "/admin/pos",         icon: "🧾" },
+  { label: "History",  href: "/admin/pos/history",  icon: "🕘" },
+];
+
+// Maps an expandable nav item's key to its submenu items and active-path prefix
+const subMenus: Record<string, { items: { label: string; href: string; icon: string }[]; activePrefix: string }> = {
+  accounting: { items: accountingItems, activePrefix: "/admin/accounting" },
+  pos:        { items: posItems,        activePrefix: "/admin/pos" },
+};
+
 const nav = [
   { key: "dashboard",  label: "Dashboard",  href: "/admin",           icon: "▦" },
+  { key: "pos",        label: "POS Sale",   href: "/admin/pos",       icon: "🧾", expandable: true },
   { key: "products",   label: "Products",   href: "/admin/products",   icon: "🪟" },
   { key: "orders",     label: "Orders",     href: "/admin/orders",     icon: "📦" },
   { key: "customers",  label: "Customers",  href: "/admin/customers",  icon: "👥" },
@@ -49,12 +61,23 @@ export default function AdminSidebar() {
   const displayName = customerUser?.name || staffUser?.name || "";
   const displayRole = isCustomerAdmin ? "Administrator" : (staffUser?.role || "");
 
-  const isAccountingActive = pathname.startsWith("/admin/accounting");
-  const [accountingOpen, setAccountingOpen] = useState(isAccountingActive);
+  // openMenus tracks expand/collapse state per expandable nav key (accounting, pos, ...)
+  const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    if (isAccountingActive) setAccountingOpen(true);
-  }, [isAccountingActive]);
+    // Auto-expand whichever expandable section matches the current path
+    const updates: Record<string, boolean> = {};
+    for (const key of Object.keys(subMenus)) {
+      if (pathname.startsWith(subMenus[key].activePrefix)) updates[key] = true;
+    }
+    if (Object.keys(updates).length) {
+      setOpenMenus((prev) => ({ ...prev, ...updates }));
+    }
+  }, [pathname]);
+
+  const toggleMenu = (key: string) => {
+    setOpenMenus((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const handleLogout = () => {
     if (isCustomerAdmin) { customerLogout(); window.location.href = "/"; }
@@ -98,10 +121,12 @@ export default function AdminSidebar() {
           const active = pathname === item.href || (item.href !== "/admin" && pathname.startsWith(item.href));
 
           if (item.expandable) {
+            const sub = subMenus[item.key];
+            const isOpen = !!openMenus[item.key];
             return (
-              <div key={item.href}>
+              <div key={item.key}>
                 <div
-                  onClick={() => setAccountingOpen((o) => !o)}
+                  onClick={() => toggleMenu(item.key)}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "space-between",
                     padding: "9px 12px", borderRadius: 8, marginBottom: 2,
@@ -120,13 +145,13 @@ export default function AdminSidebar() {
                   </div>
                   <span style={{
                     fontSize: 10, color: "#94a3b8",
-                    transform: accountingOpen ? "rotate(180deg)" : "rotate(0deg)",
+                    transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
                     transition: "transform 0.2s",
                     display: "inline-block",
                   }}>▼</span>
                 </div>
 
-                {accountingOpen && (
+                {isOpen && sub && (
                   <div style={{
                     marginLeft: 12,
                     borderLeft: "2px solid #e2e8f0",
@@ -134,10 +159,10 @@ export default function AdminSidebar() {
                     marginBottom: 4,
                     overflow: "hidden",
                   }}>
-                    {accountingItems.map((sub) => {
-                      const subActive = pathname.startsWith(sub.href);
+                    {sub.items.map((s) => {
+                      const subActive = pathname === s.href || pathname.startsWith(s.href + "/");
                       return (
-                        <Link key={sub.href} href={sub.href} style={{ textDecoration: "none" }}>
+                        <Link key={s.href} href={s.href} style={{ textDecoration: "none" }}>
                           <div style={{
                             display: "flex", alignItems: "center", gap: 8,
                             padding: "7px 10px", borderRadius: 6, marginBottom: 1,
@@ -151,9 +176,9 @@ export default function AdminSidebar() {
                             onMouseEnter={(e) => { if (!subActive) e.currentTarget.style.background = "#f8fafc"; }}
                             onMouseLeave={(e) => { if (!subActive) e.currentTarget.style.background = "transparent"; }}
                           >
-                            <span style={{ fontSize: 13 }}>{sub.icon}</span>
+                            <span style={{ fontSize: 13 }}>{s.icon}</span>
                             <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                              {sub.label}
+                              {s.label}
                             </span>
                           </div>
                         </Link>
