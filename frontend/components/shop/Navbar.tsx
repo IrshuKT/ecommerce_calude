@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
@@ -11,13 +11,19 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "htt
 
 export default function Navbar() {
   const { user, logout } = useAuthStore();
-  const { items } = useCartStore();
+  const { items, fetchCart } = useCartStore();
   const router = useRouter();
   const settings = usePublicSettings();
   const totalItems = items.reduce((s, i) => s + i.quantity, 0);
 
   const [search, setSearch] = useState("");
   const [searching, setSearching] = useState(false);
+
+  // Keep the badge in sync with the backend cart whenever the logged-in user changes
+  // (covers first load, login, and switching accounts).
+  useEffect(() => {
+    if (user) fetchCart();
+  }, [user]);
 
   const submitSearch = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -28,7 +28,24 @@ export default function CustomersPage() {
 
   return (
     <div style={{ padding: 32 }}>
-      <PageHeader title="Customers" subtitle="View registered customers" />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <PageHeader title="Customers" subtitle="View registered customers" />
+        <a
+          href="/admin/customers/new"
+          style={{
+            background: "#0284c7",
+            color: "#fff",
+            padding: "8px 16px",
+            borderRadius: 6,
+            fontSize: 14,
+            fontWeight: 500,
+            textDecoration: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          + Add Customer
+        </a>
+      </div>
       <div className="card">
         <DataTable columns={columns} data={customers} loading={loading} emptyText="No customers yet" />
       </div>

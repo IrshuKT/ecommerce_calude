@@ -1,0 +1,29 @@
+Update the changes in app
+
+
+1. Rebuild backend:
+powershell cd ~/Desktop/ecommerce_calude/backend
+pyinstaller --onefile --name backend --hidden-import=asyncpg.pgproto.pgproto --collect-all pkg_resources run_backend.py
+
+2. Rebuild frontend (clean, to avoid stale bundle issues from before): 
+powershellcd ~/Desktop/ecommerce_calude/frontend
+Remove-Item -Recurse -Force .next
+npm run build
+Copy-Item public .next\standalone\public -Recurse -Force
+Copy-Item .next\static .next\standalone\.next\static -Recurse -Force
+
+
+3. Wipe and recopy both into the launcher's resources:
+powershellcd ..\desktop-launcher
+Remove-Item -Recurse -Force resources\backend
+New-Item -ItemType Directory -Path resources\backend
+Copy-Item ..\backend\dist\backend.exe resources\backend\
+Copy-Item ..\backend\.env resources\backend\
+
+Remove-Item -Recurse -Force resources\frontend
+New-Item -ItemType Directory -Path resources\frontend
+Copy-Item ..\frontend\.next\standalone\* resources\frontend\ -Recurse -Force
+
+4. Kill the running app, rebuild the installer:
+powershellGet-Process | Where-Object { $_.Path -like "*Calude*" } | Stop-Process -Force
+npm run dist

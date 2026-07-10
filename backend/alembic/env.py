@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.db.session import Base
 from app.models import models       # noqa
 from app.models import accounting   # noqa
+from app.models import pos 
 from app.api.v1.endpoints.stock_transactions import StockTransaction
 
 config = context.config

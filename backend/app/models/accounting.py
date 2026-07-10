@@ -28,7 +28,9 @@ class VoucherType(str, enum.Enum):
     journal = "journal"
     credit_note = "credit_note"
     debit_note = "debit_note"
-    opening_balance  = "opening_balance" 
+    opening_balance  = "opening_balance"
+    pos_sale = "pos_sale"
+ 
 
 
 class InvoiceStatus(str, enum.Enum):

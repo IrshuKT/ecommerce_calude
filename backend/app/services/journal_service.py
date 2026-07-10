@@ -85,6 +85,30 @@ async def post_journal(db, voucher_type, voucher_date, lines, reference=None, na
                            customer_id=line.get("customer_id")))
     return journal
 
+async def post_pos_sale_journal(db, sale, payments, created_by_user_id=None):
+    """Debits each payment method's account (cash/card/upi), credits Sales.
+    POS sales are immediate cash transactions with no receivable involved,
+    unlike post_sales_invoice_journal which debits Accounts Receivable (1200)."""
+    lines = []
+    for p in payments:
+        account = await get_account(db, _payment_mode_account(p["method"]))
+        lines.append({
+            "account_code": account.code,
+            "debit": float(p["amount"]),
+            "narration": f"POS sale {sale.sale_number} ({p['method']})",
+        })
+    lines.append({
+        "account_code": "4000",
+        "credit": float(sale.total_amount),
+        "narration": f"POS sale {sale.sale_number}",
+    })
+    return await post_journal(
+        db, VoucherType.pos_sale, sale.created_at.date(), lines,
+        reference=sale.sale_number, narration=f"POS sale {sale.sale_number}",
+        created_by_id=created_by_user_id,
+    )
+
+
 
 def _payment_mode_account(mode: str) -> str:
     return {"cash": "1010", "cod": "1010", "upi": "1020",

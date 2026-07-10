@@ -34,9 +34,9 @@ async def get_cart(current_user: User = Depends(get_current_user), db: AsyncSess
         p = v.product
         if p.price_type == "per_sqft" and item.custom_width_ft and item.custom_height_ft:
             area = item.custom_width_ft * item.custom_height_ft
-            unit_price = v.price * area
+            unit_price = v.retail_price * area
         else:
-            unit_price = v.price
+            unit_price = v.retail_price
         line_total = unit_price * item.quantity
         primary_image = next((img.url for img in p.images if img.is_primary), None)
         out.append({
