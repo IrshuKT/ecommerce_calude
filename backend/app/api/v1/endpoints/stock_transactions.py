@@ -12,7 +12,7 @@ from typing import Optional, List
 import enum
 
 from app.db.session import get_db
-from app.models.models import ProductVariant, Product, User,StockTransaction
+from app.models.models import ProductVariant, Product, User, StockTransaction
 from app.api.v1.endpoints.auth import get_admin_user
 
 
@@ -21,9 +21,9 @@ router = APIRouter()
 
 class StockTxnIn(BaseModel):
     variant_id: int
-    txn_type: str = "adjustment"        
-    qty_change: Optional[int] = None   
-    new_qty: Optional[int] = None       
+    txn_type: str = "adjustment"
+    qty_change: Optional[int] = None    # used for "in" / "out"
+    new_qty: Optional[int] = None       # used for "adjustment"
     reference_type: Optional[str] = "manual"
     reference_id: Optional[str] = None
     note: Optional[str] = None
@@ -40,8 +40,6 @@ async def list_stock_transactions(
     current_user: User = Depends(get_admin_user),
 ):
     """List all stock transactions for a product, optionally filtered by variant or type."""
-    # ← removed get_stock_transaction_model() — StockTransaction is imported at top of file
-
     prod = await db.execute(
         select(Product).options(selectinload(Product.variants)).where(Product.id == product_id)
     )
@@ -102,8 +100,15 @@ async def create_stock_transaction(
 ):
     if payload.txn_type not in ("in", "out", "adjustment"):
         raise HTTPException(400, "txn_type must be 'in', 'out', or 'adjustment'")
-    if payload.qty_change <= 0:
-        raise HTTPException(400, "qty_change must be positive")
+
+    # "in"/"out" use qty_change (a positive delta).
+    # "adjustment" uses new_qty (the new absolute stock level) instead.
+    if payload.txn_type in ("in", "out"):
+        if payload.qty_change is None or payload.qty_change <= 0:
+            raise HTTPException(400, "qty_change must be a positive number for 'in'/'out' transactions")
+    else:
+        if payload.new_qty is None or payload.new_qty < 0:
+            raise HTTPException(400, "new_qty must be provided (and non-negative) for adjustment transactions")
 
     res = await db.execute(
         select(ProductVariant).where(
@@ -125,8 +130,8 @@ async def create_stock_transaction(
         if qty_after < 0:
             raise HTTPException(400, f"Insufficient stock. Current: {qty_before}, requested: {payload.qty_change}")
         qty_delta = -payload.qty_change
-    else:  # adjustment — qty_change is the new absolute qty
-        qty_after = payload.qty_change
+    else:  # adjustment — new_qty is the new absolute qty
+        qty_after = payload.new_qty
         qty_delta = qty_after - qty_before
 
     variant.stock_qty = qty_after

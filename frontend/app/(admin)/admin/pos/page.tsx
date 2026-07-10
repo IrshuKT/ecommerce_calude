@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import api from "@/lib/api";
+import posApi from "@/lib/posApi";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -90,7 +90,7 @@ export default function POSPage() {
     }
     setSearching(true);
     try {
-      const res = await api.get("/pos/products/search", { params: { q: value } });
+      const res = await posApi.get("/pos/products/search", { params: { q: value } });
       setResults(res.data);
     } catch {
       setResults([]);
@@ -103,7 +103,7 @@ export default function POSPage() {
   async function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Enter" || !query.trim()) return;
     try {
-      const res = await api.get(`/pos/products/barcode/${encodeURIComponent(query.trim())}`);
+      const res = await posApi.get(`/pos/products/barcode/${encodeURIComponent(query.trim())}`);
       addToCart(res.data);
       setQuery("");
       setResults([]);
@@ -162,7 +162,7 @@ export default function POSPage() {
       return;
     }
     try {
-      const r = await api.get(`/users/?limit=50`);
+      const r = await posApi.get(`/users/?limit=50`);
       const data = Array.isArray(r.data) ? r.data : r.data?.items || [];
       const filtered = data.filter(
         (u: CustomerResult) =>
@@ -228,7 +228,7 @@ export default function POSPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const res = await api.post("/pos/sales", {
+      const res = await posApi.post("/pos/sales", {
         items: cart.map((l) => ({
           variant_id: l.variant_id,
           quantity: l.quantity,

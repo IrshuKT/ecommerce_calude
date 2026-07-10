@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCartStore } from "@/store/cart";
@@ -9,7 +9,7 @@ import api from "@/lib/api";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8000";
 
 export default function CartPage() {
-  const { items, updateQuantity, removeItem, clearCart, total } = useCartStore();
+  const { items, loading, hydrated, fetchCart, updateQuantity, removeItem, clearCart, total } = useCartStore();
   const { user } = useAuthStore();
   const router = useRouter();
   const [couponCode, setCouponCode] = useState("");
@@ -18,18 +18,15 @@ export default function CartPage() {
   const [appliedCoupon, setAppliedCoupon] = useState("");
   const [applying, setApplying] = useState(false);
 
+  useEffect(() => {
+    if (user) fetchCart();
+  }, [user]);
+
   const subtotal = total();
   const gstRate = 0.18;
   const taxableAmount = subtotal - discount;
   const gstAmount = taxableAmount * gstRate;
   const grandTotal = taxableAmount + gstAmount;
-
-  const getLineTotal = (item: any) => {
-    if (item.price_type === "per_sqft" && item.custom_width_ft && item.custom_height_ft) {
-      return item.price * item.custom_width_ft * item.custom_height_ft * item.quantity;
-    }
-    return item.price * item.quantity;
-  };
 
   const applyCoupon = async () => {
     if (!couponCode.trim()) return;
@@ -62,6 +59,14 @@ export default function CartPage() {
     router.push("/checkout");
   };
 
+  if (loading && !hydrated) {
+    return (
+      <div style={{ maxWidth: 600, margin: "80px auto", padding: "0 24px", textAlign: "center", color: "#94a3b8" }}>
+        Loading cart...
+      </div>
+    );
+  }
+
   if (items.length === 0) return (
     <div style={{ maxWidth: 600, margin: "80px auto", padding: "0 24px", textAlign: "center" }}>
       <div style={{ fontSize: 72, marginBottom: 16 }}>🛒</div>
@@ -84,12 +89,12 @@ export default function CartPage() {
         <div>
           <div className="card" style={{ overflow: "hidden" }}>
             {items.map((item, idx) => {
-              const lineTotal = getLineTotal(item);
               const area = item.custom_width_ft && item.custom_height_ft
                 ? item.custom_width_ft * item.custom_height_ft : null;
+              const outOfStock = item.stock_qty != null && item.stock_qty < item.quantity;
 
               return (
-                <div key={item.variant_id} style={{
+                <div key={item.id} style={{
                   padding: 20, borderBottom: idx < items.length - 1 ? "1px solid #f1f5f9" : "none",
                   display: "flex", gap: 16, alignItems: "flex-start",
                 }}>
@@ -105,7 +110,7 @@ export default function CartPage() {
                     <h3 style={{ fontSize: 15, fontWeight: 600, color: "#1e293b", margin: "0 0 4px" }}>{item.product_name}</h3>
 
                     {/* Attributes */}
-                    {Object.entries(item.selected_attributes).length > 0 && (
+                    {Object.entries(item.selected_attributes || {}).length > 0 && (
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
                         {Object.entries(item.selected_attributes).map(([k, v]) => (
                           <span key={k} style={{ fontSize: 11, background: "#f1f5f9", color: "#475569", padding: "2px 8px", borderRadius: 4 }}>
@@ -122,18 +127,24 @@ export default function CartPage() {
                       </p>
                     )}
 
-                    <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 10px" }}>SKU: {item.sku}</p>
+                    <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 6px" }}>SKU: {item.sku}</p>
+
+                    {outOfStock && (
+                      <p style={{ fontSize: 12, color: "#dc2626", margin: "0 0 8px", fontWeight: 500 }}>
+                        Only {item.stock_qty} left in stock — reduce quantity to check out
+                      </p>
+                    )}
 
                     {/* Quantity controls */}
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                       <div style={{ display: "flex", alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 7, overflow: "hidden" }}>
-                        <button onClick={() => updateQuantity(item.variant_id, item.quantity - 1)}
+                        <button onClick={() => updateQuantity(item.id, item.quantity - 1)}
                           style={{ width: 32, height: 32, border: "none", background: "#f8fafc", cursor: "pointer", fontSize: 16, color: "#475569" }}>−</button>
                         <span style={{ width: 36, textAlign: "center", fontSize: 14, fontWeight: 600 }}>{item.quantity}</span>
-                        <button onClick={() => updateQuantity(item.variant_id, item.quantity + 1)}
+                        <button onClick={() => updateQuantity(item.id, item.quantity + 1)}
                           style={{ width: 32, height: 32, border: "none", background: "#f8fafc", cursor: "pointer", fontSize: 16, color: "#475569" }}>+</button>
                       </div>
-                      <button onClick={() => removeItem(item.variant_id)}
+                      <button onClick={() => removeItem(item.id)}
                         style={{ fontSize: 13, color: "#dc2626", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
                         Remove
                       </button>
@@ -143,12 +154,12 @@ export default function CartPage() {
                   {/* Price */}
                   <div style={{ textAlign: "right", flexShrink: 0 }}>
                     <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b" }}>
-                      ₹{lineTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      ₹{item.line_total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                     </div>
-                    {item.price_type === "per_sqft" && area ? (
-                      <div style={{ fontSize: 12, color: "#94a3b8" }}>₹{item.price}/sqft × {area.toFixed(2)} sqft</div>
+                    {area ? (
+                      <div style={{ fontSize: 12, color: "#94a3b8" }}>₹{item.unit_price}/sqft × {area.toFixed(2)} sqft</div>
                     ) : (
-                      <div style={{ fontSize: 12, color: "#94a3b8" }}>₹{item.price} × {item.quantity}</div>
+                      <div style={{ fontSize: 12, color: "#94a3b8" }}>₹{item.unit_price} × {item.quantity}</div>
                     )}
                   </div>
                 </div>
@@ -173,9 +184,9 @@ export default function CartPage() {
             {/* Line items summary */}
             <div style={{ marginBottom: 16 }}>
               {items.map(item => (
-                <div key={item.variant_id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#475569", marginBottom: 6 }}>
+                <div key={item.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#475569", marginBottom: 6 }}>
                   <span style={{ flex: 1, marginRight: 8 }}>{item.product_name} × {item.quantity}</span>
-                  <span>₹{getLineTotal(item).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                  <span>₹{item.line_total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
                 </div>
               ))}
             </div>

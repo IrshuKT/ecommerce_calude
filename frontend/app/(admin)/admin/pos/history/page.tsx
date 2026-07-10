@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import api from "@/lib/api";
+import posApi from "@/lib/posApi";
 
 type SaleSummary = {
   id: number;
@@ -31,7 +31,7 @@ export default function POSHistoryPage() {
   async function load() {
     setLoading(true);
     try {
-      const res = await api.get("/pos/sales");
+      const res = await posApi.get("/pos/sales");
       setSales(res.data);
     } finally {
       setLoading(false);
@@ -43,7 +43,7 @@ export default function POSHistoryPage() {
   }, []);
 
   async function openSale(sale_number: string) {
-    const res = await api.get(`/pos/sales/${encodeURIComponent(sale_number)}`);
+    const res = await posApi.get(`/pos/sales/${encodeURIComponent(sale_number)}`);
     setSelected(res.data);
   }
 
@@ -52,7 +52,7 @@ export default function POSHistoryPage() {
     if (!confirm(`Void sale ${selected.sale_number}? This restocks all items.`)) return;
     setVoiding(true);
     try {
-      await api.post(`/pos/sales/${encodeURIComponent(selected.sale_number)}/void`);
+      await posApi.post(`/pos/sales/${encodeURIComponent(selected.sale_number)}/void`);
       setSelected(null);
       load();
     } finally {

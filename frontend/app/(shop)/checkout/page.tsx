@@ -97,18 +97,10 @@ export default function CheckoutPage() {
     if (!selectedAddressId) { alert("Please select a delivery address"); return; }
     setPlacing(true);
     try {
-      // Step 1: Sync frontend cart to backend DB
-      try { await api.delete("/cart/"); } catch { }
-      for (const item of items) {
-        await api.post("/cart/", {
-          variant_id: item.variant_id,
-          quantity: item.quantity,
-          custom_width_ft: item.custom_width_ft || null,
-          custom_height_ft: item.custom_height_ft || null,
-        });
-      }
+      // No cart re-sync needed here: the cart store (useCartStore) already talks
+      // directly to the backend on every add/update/remove, so `items` here IS
+      // the backend's cart. Re-posting them would double quantities.
 
-      // Step 2: Place order
       const res = await api.post("/orders/", {
         address_id: selectedAddressId,
         payment_method: paymentMethod,
@@ -117,12 +109,12 @@ export default function CheckoutPage() {
       const orderNumber = res.data.order_number;
 
       if (paymentMethod === "cod") {
-        clearCart();
+        await clearCart();
         router.push(`/order-success?order=${orderNumber}&method=cod`);
         return;
       }
 
-      // Step 3: Razorpay payment
+      // Step 2: Razorpay payment
       const rzRes = await api.post("/payments/create-razorpay-order", {
         order_number: orderNumber,
       });
@@ -142,7 +134,7 @@ export default function CheckoutPage() {
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
             });
-            clearCart();
+            await clearCart();
             router.push(`/order-success?order=${orderNumber}&method=razorpay`);
           } catch {
             alert("Payment verification failed. Contact support.");
@@ -361,9 +353,9 @@ export default function CheckoutPage() {
                 <div style={{ marginBottom: 20 }}>
                   <p style={{ fontSize: 13, fontWeight: 600, color: "#475569", margin: "0 0 10px" }}>Order Items</p>
                   {items.map(item => (
-                    <div key={item.variant_id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#475569", marginBottom: 6, padding: "6px 0", borderBottom: "1px solid #f1f5f9" }}>
+                    <div key={item.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#475569", marginBottom: 6, padding: "6px 0", borderBottom: "1px solid #f1f5f9" }}>
                       <span>{item.product_name} × {item.quantity}</span>
-                      <span style={{ fontWeight: 500 }}>₹{(item.price * item.quantity).toLocaleString("en-IN")}</span>
+                      <span style={{ fontWeight: 500 }}>₹{item.line_total.toLocaleString("en-IN")}</span>
                     </div>
                   ))}
                 </div>
@@ -386,7 +378,7 @@ export default function CheckoutPage() {
           <div className="card" style={{ padding: 20, position: "sticky", top: 80 }}>
             <h3 style={{ fontSize: 15, fontWeight: 600, margin: "0 0 16px" }}>Order Summary</h3>
             {items.map(item => (
-              <div key={item.variant_id} style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "center" }}>
+              <div key={item.id} style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "center" }}>
                 <div style={{ width: 44, height: 44, borderRadius: 6, background: "#f1f5f9", overflow: "hidden", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {item.primary_image
                     ? <img src={`${API_BASE}${item.primary_image}`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -396,7 +388,7 @@ export default function CheckoutPage() {
                   <p style={{ fontSize: 13, fontWeight: 500, color: "#1e293b", margin: "0 0 2px" }}>{item.product_name}</p>
                   <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>Qty: {item.quantity}</p>
                 </div>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>₹{(item.price * item.quantity).toLocaleString("en-IN")}</span>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>₹{item.line_total.toLocaleString("en-IN")}</span>
               </div>
             ))}
             <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 12, marginTop: 4 }}>

@@ -16,7 +16,7 @@ router = APIRouter()
 ROLE_MENUS: dict[str, list[str]] = {
     "admin":     ["dashboard", "products", "orders", "customers", "vendors", "accounting", "reports", "coupons", "settings", "users"],
     "manager":   ["dashboard", "products", "orders", "customers", "vendors", "accounting", "reports", "coupons", "users"],
-    "sales":     ["dashboard", "orders", "customers"],
+    "sales":     ["dashboard", "orders", "customers","pos"],
     "inventory": ["dashboard", "products", "vendors"],
 }
 

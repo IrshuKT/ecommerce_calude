@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useState, Suspense } from "react";
-import { useSearchParams,useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import api from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
+import { useCartStore } from "@/store/cart";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8000";
 
@@ -18,6 +19,7 @@ interface Variant {
 function BuyModal({ product, variant, onClose }: { product: any; variant: Variant; onClose: () => void }) {
   const router = useRouter();
   const { user } = useAuthStore();
+  const addItem = useCartStore(s => s.addItem);
   const [qty, setQty] = useState(1);
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
@@ -31,7 +33,7 @@ function BuyModal({ product, variant, onClose }: { product: any; variant: Varian
     }
     setAdding(true);
     try {
-      await api.post("/cart/", { variant_id: variant.id, quantity: qty });
+      await addItem(variant.id, qty);
       setAdded(true);
       setTimeout(() => { setAdded(false); onClose(); }, 1000);
     } catch {
@@ -218,8 +220,6 @@ function ProductCard({ product }: { product: any }) {
   );
 }
 
-
-
 function ShopContent() {
   const searchParams = useSearchParams();
   const [products, setProducts] = useState<any[]>([]);
@@ -253,67 +253,64 @@ function ShopContent() {
 
   const totalPages = Math.ceil(total / limit);
 
-
   return (
-  <div style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 24px" }}>
-    <div style={{ marginBottom: 20 }}>
-      <h1 style={{ fontSize: 26, fontWeight: 700, color: "#1e293b", margin: "0 0 4px" }}>
-        {featured ? "Featured Products" : categorySlug ? categories.find(c => c.slug === categorySlug)?.name || "Products" : "All Products"}
-      </h1>
-      <p style={{ fontSize: 14, color: "#64748b", margin: 0 }}>{total} products found</p>
-    </div>
+    <div style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 24px" }}>
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ fontSize: 26, fontWeight: 700, color: "#1e293b", margin: "0 0 4px" }}>
+          {featured ? "Featured Products" : categorySlug ? categories.find(c => c.slug === categorySlug)?.name || "Products" : "All Products"}
+        </h1>
+        <p style={{ fontSize: 14, color: "#64748b", margin: 0 }}>{total} products found</p>
+      </div>
 
-    {/* Category pills - top */}
-    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
-      <Link href="/shop" style={{
-        padding: "8px 18px", borderRadius: 20, border: "1px solid",
-        borderColor: !categorySlug ? "#0284c7" : "#e2e8f0",
-        background: !categorySlug ? "#0284c7" : "white",
-        color: !categorySlug ? "white" : "#475569",
-        fontSize: 13, fontWeight: 500, textDecoration: "none",
-      }}>
-        All Products
-      </Link>
-      {categories.map(cat => (
-        <Link key={cat.id} href={`/shop?category=${cat.slug}`} style={{
+      {/* Category pills - top */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
+        <Link href="/shop" style={{
           padding: "8px 18px", borderRadius: 20, border: "1px solid",
-          borderColor: categorySlug === cat.slug ? "#0284c7" : "#e2e8f0",
-          background: categorySlug === cat.slug ? "#0284c7" : "white",
-          color: categorySlug === cat.slug ? "white" : "#475569",
+          borderColor: !categorySlug ? "#0284c7" : "#e2e8f0",
+          background: !categorySlug ? "#0284c7" : "white",
+          color: !categorySlug ? "white" : "#475569",
           fontSize: 13, fontWeight: 500, textDecoration: "none",
         }}>
-          {cat.name}
+          All Products
         </Link>
-      ))}
-    </div>
-
-
-
-    {/* Products grid - now full width, no sidebar */}
-    {loading ? (
-      <div style={{ textAlign: "center", padding: 60, color: "#94a3b8" }}>Loading products...</div>
-    ) : products.length === 0 ? (
-      <div style={{ textAlign: "center", padding: 60 }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>🪟</div>
-        <p style={{ color: "#64748b" }}>No products found</p>
-        <Link href="/shop" style={{ color: "#0284c7", fontSize: 14 }}>Clear filters</Link>
+        {categories.map(cat => (
+          <Link key={cat.id} href={`/shop?category=${cat.slug}`} style={{
+            padding: "8px 18px", borderRadius: 20, border: "1px solid",
+            borderColor: categorySlug === cat.slug ? "#0284c7" : "#e2e8f0",
+            background: categorySlug === cat.slug ? "#0284c7" : "white",
+            color: categorySlug === cat.slug ? "white" : "#475569",
+            fontSize: 13, fontWeight: 500, textDecoration: "none",
+          }}>
+            {cat.name}
+          </Link>
+        ))}
       </div>
-    ) : (
-      <>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20, marginBottom: 32 }}>
-          {products.map(p => <ProductCard key={p.id} product={p} />)}
+
+      {/* Products grid - now full width, no sidebar */}
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 60, color: "#94a3b8" }}>Loading products...</div>
+      ) : products.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 60 }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🪟</div>
+          <p style={{ color: "#64748b" }}>No products found</p>
+          <Link href="/shop" style={{ color: "#0284c7", fontSize: 14 }}>Clear filters</Link>
         </div>
-        {totalPages > 1 && (
-          <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-              <button key={p} onClick={() => setPage(p)} style={{ width: 36, height: 36, borderRadius: 8, border: "1px solid", borderColor: page === p ? "#0284c7" : "#e2e8f0", background: page === p ? "#0284c7" : "white", color: page === p ? "white" : "#475569", cursor: "pointer", fontSize: 14 }}>{p}</button>
-            ))}
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 20, marginBottom: 32 }}>
+            {products.map(p => <ProductCard key={p.id} product={p} />)}
           </div>
-        )}
-      </>
-    )}
-  </div>
-);
+          {totalPages > 1 && (
+            <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                <button key={p} onClick={() => setPage(p)} style={{ width: 36, height: 36, borderRadius: 8, border: "1px solid", borderColor: page === p ? "#0284c7" : "#e2e8f0", background: page === p ? "#0284c7" : "white", color: page === p ? "white" : "#475569", cursor: "pointer", fontSize: 14 }}>{p}</button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
 }
 
 export default function ShopPage() {
