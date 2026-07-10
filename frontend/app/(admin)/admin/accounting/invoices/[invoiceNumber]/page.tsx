@@ -136,7 +136,7 @@ export default function InvoiceDetailPage() {
           </tbody>
         </table>
 
-        {/* Totals */}
+{/* Totals */}
 <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
   <div style={{ width: 280 }}>
     {[
@@ -147,6 +147,10 @@ export default function InvoiceDetailPage() {
       ...(parseFloat(invoice.sgst_amount) > 0 ? [{ label: "SGST", value: fmt(invoice.sgst_amount) }] : []),
       ...(parseFloat(invoice.igst_amount) > 0 ? [{ label: "IGST", value: fmt(invoice.igst_amount) }] : []),
       ...(parseFloat(invoice.shipping_charge) > 0 ? [{ label: "Shipping", value: fmt(invoice.shipping_charge) }] : []),
+      ...(parseFloat(invoice.round_off) !== 0 ? [{
+        label: "Round Off",
+        value: `${parseFloat(invoice.round_off) > 0 ? "+ " : "− "}${fmt(Math.abs(parseFloat(invoice.round_off)))}`
+      }] : []),
     ].map(row => (
       <div key={row.label} style={{ display: "flex", justifyContent: "space-between", padding: "1px 0", fontSize: 13, color: "#475569" }}>
         <span>{row.label}</span><span>{row.value}</span>

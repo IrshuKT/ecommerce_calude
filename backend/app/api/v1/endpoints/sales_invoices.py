@@ -219,12 +219,31 @@ async def confirm_invoice(invoice_number: str,
     if invoice.journal_id:
         raise HTTPException(400, "Journal already posted for this invoice")
 
+    # ── Stock deduction (fails loudly, before journal is posted) ──
+    from app.services.stock_service import record_stock_transaction
+    for it in invoice.items:
+        if not it.variant_id:
+            continue  # no variant = free-text line, skip
+        v_r = await db.execute(select(ProductVariant).where(ProductVariant.id == it.variant_id))
+        variant = v_r.scalar_one_or_none()
+        if not variant:
+            continue
+        if variant.track_inventory:
+            try:
+                await record_stock_transaction(
+                    db=db, variant=variant, txn_type="out", qty=int(it.quantity),
+                    reference_type="invoice", reference_id=invoice.invoice_number,
+                    note="Stock out on manual invoice confirmation",
+                    created_by_id=current_user.id,
+                )
+            except ValueError as e:
+                raise HTTPException(400, f"Cannot confirm: {e} for variant {variant.sku}")
+
     journal = await post_sales_invoice_journal(db, invoice, invoice.customer_id)
     invoice.status = InvoiceStatus.confirmed
     invoice.journal_id = journal.id
     await db.commit()
     return {"invoice_number": invoice.invoice_number, "status": invoice.status, "journal_id": journal.id, "voucher_number": journal.voucher_number}
-
 
 @router.post("/{invoice_number:path}/cancel")
 async def cancel_invoice(invoice_number: str,

@@ -104,6 +104,14 @@ async def post_sales_invoice_journal(db, invoice, customer_id):
         if invoice.sgst_amount: lines.append({"account_code": "2200", "credit": float(invoice.sgst_amount), "narration": "SGST on sales"})
     if invoice.shipping_charge:
         lines.append({"account_code": "4100", "credit": float(invoice.shipping_charge), "narration": "Shipping"})
+
+    round_off = float(invoice.round_off or 0)
+    if abs(round_off) >= 0.005:
+        if round_off > 0:
+            lines.append({"account_code": "4900", "credit": round_off, "narration": "Round off"})
+        else:
+            lines.append({"account_code": "4900", "debit": abs(round_off), "narration": "Round off"})
+
     return await post_journal(db, VoucherType.sales_invoice, invoice.invoice_date, lines, reference=invoice.invoice_number, narration=f"Sales invoice {invoice.invoice_number}")
 
 async def post_receipt_journal(db, receipt, customer_id):

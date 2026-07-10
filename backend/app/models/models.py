@@ -117,6 +117,10 @@ class Category(Base):
     products: Mapped[List["Product"]] = relationship("Product", back_populates="category")
 
 
+class ProductType(str, enum.Enum):
+    product = "product"
+    service = "service"
+
 class Product(Base):
     __tablename__ = "products"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -128,6 +132,7 @@ class Product(Base):
     hsn_code: Mapped[Optional[str]] = mapped_column(String(20))
     gst_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=18.00)
     price_type: Mapped[PriceType] = mapped_column(Enum(PriceType), default=PriceType.fixed)
+    item_type: Mapped[ProductType] = mapped_column(Enum(ProductType), default=ProductType.product)  # ← new
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_featured: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
@@ -137,7 +142,6 @@ class Product(Base):
     attributes: Mapped[List["ProductAttribute"]] = relationship("ProductAttribute", back_populates="product", cascade="all, delete-orphan")
     variants: Mapped[List["ProductVariant"]] = relationship("ProductVariant", back_populates="product", cascade="all, delete-orphan")
     images: Mapped[List["ProductImage"]] = relationship("ProductImage", back_populates="product", cascade="all, delete-orphan")
-
 
 class ProductAttribute(Base):
     __tablename__ = "product_attributes"
@@ -168,7 +172,7 @@ class ProductVariant(Base):
     width_ft: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2))
     height_ft: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2))
     retail_price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
-    trade_price : Mapped[Decimal] = mapped_column(Numeric(10,2))
+    trade_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)   # ← changed
     compare_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2))
     cost_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2))
     stock_qty: Mapped[int] = mapped_column(Integer, default=0)
@@ -180,7 +184,7 @@ class ProductVariant(Base):
     cart_items: Mapped[List["CartItem"]] = relationship("CartItem", back_populates="variant")
     order_items: Mapped[List["OrderItem"]] = relationship("OrderItem", back_populates="variant")
 
-
+    
 class ProductImage(Base):
     __tablename__ = "product_images"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.models import ProductVariant
-from app.models.stock_transactions import StockTransaction
+from app.models.models import StockTransaction
 
 
 async def record_stock_transaction(

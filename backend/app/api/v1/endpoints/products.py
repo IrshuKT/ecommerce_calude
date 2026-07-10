@@ -238,6 +238,7 @@ class CreateProductIn(BaseModel):
     hsn_code: Optional[str] = None
     gst_rate: Decimal = Decimal("18.00")
     price_type: str = "fixed"
+    item_type: str = "product"  
     is_featured: bool = False
     sort_order: int = 0
     attributes: List[AttributeIn] = []
@@ -267,6 +268,7 @@ async def create_product(
             hsn_code=payload.hsn_code,
             gst_rate=payload.gst_rate,
             price_type=payload.price_type,
+            item_type=payload.item_type,  
             is_featured=payload.is_featured,
             sort_order=payload.sort_order,
             is_active=True,
@@ -293,12 +295,12 @@ async def create_product(
                 trade_price=var.trade_price,
                 cost_price=var.cost_price,
                 compare_price=var.compare_price,
-                stock_qty=var.stock_qty,
                 width_ft=var.width_ft,
                 height_ft=var.height_ft,
                 weight_kg=var.weight_kg,
                 low_stock_threshold=var.low_stock_threshold,
-                track_inventory=True,
+                track_inventory=(payload.item_type == "product"),
+                stock_qty=var.stock_qty if payload.item_type == "product" else 0,
                 is_active=True,
             ))
 
@@ -328,24 +330,19 @@ async def update_product(
     if not product:
         raise HTTPException(404, "Product not found")
 
-    # Update basic fields
     allowed_fields = {"name", "slug", "description", "short_description",
                       "category_id", "hsn_code", "gst_rate", "price_type",
-                      "is_active", "is_featured", "sort_order"}
+                      "item_type", "is_active", "is_featured", "sort_order"}   # ← add item_type here too
     for k, v in payload.items():
         if k in allowed_fields:
             setattr(product, k, v)
 
-    # Update variants pricing if provided
     if "variants" in payload:
         for var_data in payload["variants"]:
-        # Match by id first, then fall back to SKU
             variant_id = var_data.get("id")
-            if variant_id:
-                existing = next((v for v in product.variants if v.id == variant_id), None)
-            else:
-                existing = next((v for v in product.variants if v.sku == var_data.get("sku")), None)
-            
+            existing = next((v for v in product.variants if v.id == variant_id), None) if variant_id \
+                       else next((v for v in product.variants if v.sku == var_data.get("sku")), None)
+
             if existing:
                 existing.retail_price = var_data.get("price", existing.retail_price)
                 existing.trade_price = var_data.get("trade_price") or existing.trade_price
@@ -356,11 +353,9 @@ async def update_product(
                 new_sku = var_data.get("sku")
                 if not new_sku:
                     continue
-                sku_check = await db.execute(
-                        select(ProductVariant).where(ProductVariant.sku == new_sku)
-                    )
+                sku_check = await db.execute(select(ProductVariant).where(ProductVariant.sku == new_sku))
                 if sku_check.scalar_one_or_none():
-                    continue  # skip duplicate SKU
+                    continue
                 db.add(ProductVariant(
                     product_id=product.id,
                     sku=new_sku,
@@ -369,12 +364,14 @@ async def update_product(
                     trade_price=var_data.get("trade_price"),
                     cost_price=var_data.get("cost_price"),
                     compare_price=var_data.get("compare_price"),
-                    stock_qty=var_data.get("stock_qty", 0),
-                    track_inventory=True, is_active=True,
+                    stock_qty=var_data.get("stock_qty", 0) if product.item_type == "product" else 0,
+                    track_inventory=(product.item_type == "product"),   # ← now respects parent
+                    is_active=True,
                 ))
 
     await db.commit()
     return {"message": "Product updated", "id": product.id}
+
 
 @router.delete("/{product_id}", status_code=204)
 async def delete_product(

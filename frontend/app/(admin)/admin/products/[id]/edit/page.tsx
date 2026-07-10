@@ -119,36 +119,84 @@ export default function ProductEditPage() {
   const addAttrValue = (i: number) => { const a = [...attrs]; a[i].values.push({ value: "" }); setAttrs(a); };
   const removeAttrValue = (ai: number, vi: number) => { const a = [...attrs]; a[ai].values.splice(vi, 1); setAttrs(a); };
   const updateAttrValue = (ai: number, vi: number, val: string) => { const a = [...attrs]; a[ai].values[vi].value = val; setAttrs(a); };
+  const addBlankVariant = () => {
+  const prefix = info.name.toUpperCase().replace(/\s+/g, "-").slice(0, 6) || "PROD";
+  const nextNum = String(variants.length + 1).padStart(3, "0");
+
+  if (isSimple) {
+    // Convert the current simple product into variant #1, then add a blank variant #2
+    const existingAsVariant: Variant = {
+      ...(variants[0] || {}),
+      sku: variants[0]?.sku || `${prefix}-001`,
+      selected_attributes: {},
+      price: simplePrice,
+      trade_price: simpleTradePrice,
+      cost_price: simpleCostPrice,
+      stock_qty: simpleStock,
+      weight_kg: "",
+      is_active: true,
+    };
+    setVariants([
+      existingAsVariant,
+      { sku: `${prefix}-${nextNum}`, selected_attributes: {}, price: "", trade_price: "", cost_price: "", compare_price: "", stock_qty: "0", weight_kg: "", is_active: true },
+    ]);
+    setIsSimple(false);
+  } else {
+    setVariants([...variants, { sku: `${prefix}-${nextNum}`, selected_attributes: {}, price: "", trade_price: "", cost_price: "", compare_price: "", stock_qty: "0", weight_kg: "", is_active: true }]);
+  }
+};
 
   const generateVariants = () => {
-    const validAttrs = attrs.filter(a => a.name.trim() && a.values.some(v => v.value.trim()));
-    if (validAttrs.length === 0) { alert("Add at least one attribute with values"); return; }
+  const validAttrs = attrs.filter(a => a.name.trim() && a.values.some(v => v.value.trim()));
+  if (validAttrs.length === 0) { alert("Add at least one attribute with values"); return; }
 
-    const combos = validAttrs.reduce<Record<string, string>[]>((acc, attr) => {
-      const vals = attr.values.filter(v => v.value.trim());
-      if (vals.length === 0) return acc;
-      if (acc.length === 0) return vals.map(v => ({ [attr.name]: v.value }));
-      return acc.flatMap(combo => vals.map(v => ({ ...combo, [attr.name]: v.value })));
-    }, []);
+  const combos = validAttrs.reduce<Record<string, string>[]>((acc, attr) => {
+    const vals = attr.values.filter(v => v.value.trim());
+    if (vals.length === 0) return acc;
+    if (acc.length === 0) return vals.map(v => ({ [attr.name]: v.value }));
+    return acc.flatMap(combo => vals.map(v => ({ ...combo, [attr.name]: v.value })));
+  }, []);
 
-    const prefix = info.name.toUpperCase().replace(/\s+/g, "-").slice(0, 6) || "PROD";
-    setVariants(combos.map((combo, i) => {
-      // Try to preserve existing variant data if SKU matches pattern
-      const existingKey = Object.values(combo).join("-").toUpperCase().replace(/\s+/g, "").replace(/"/g, "IN");
-      const existing = variants.find(v =>
-        JSON.stringify(v.selected_attributes) === JSON.stringify(combo)
-      );
-      return existing
-        ? { ...existing, selected_attributes: combo }
-        : {
-            sku: `${prefix}-${existingKey}-${String(i + 1).padStart(3, "0")}`,
-            selected_attributes: combo,
-            price: "", trade_price: "", cost_price: "", compare_price: "",
-            stock_qty: "0", weight_kg: "", is_active: true,
-          };
-    }));
-    setIsSimple(false);
-  };
+  const prefix = info.name.toUpperCase().replace(/\s+/g, "-").slice(0, 6) || "PROD";
+
+  // If we're converting FROM a simple product (single variant, no attributes),
+  // carry its data into the first generated combo instead of losing it.
+  const wasSimple = variants.length === 1 && Object.keys(variants[0].selected_attributes).length === 0;
+  const simpleData = wasSimple ? variants[0] : null;
+  let usedSimpleData = false;
+
+  setVariants(combos.map((combo, i) => {
+    const existingKey = Object.values(combo).join("-").toUpperCase().replace(/\s+/g, "").replace(/"/g, "IN");
+
+    // Try to match against a real existing variant with the same attributes
+    const existing = variants.find(v =>
+      Object.keys(v.selected_attributes).length > 0 &&
+      JSON.stringify(v.selected_attributes) === JSON.stringify(combo)
+    );
+
+    if (existing) {
+      return { ...existing, selected_attributes: combo };
+    }
+
+    // First combo, converting from simple → carry over the old simple product's data
+    if (simpleData && !usedSimpleData) {
+      usedSimpleData = true;
+      return {
+        ...simpleData,
+        sku: simpleData.sku || `${prefix}-${existingKey}-${String(i + 1).padStart(3, "0")}`,
+        selected_attributes: combo,
+      };
+    }
+
+    return {
+      sku: `${prefix}-${existingKey}-${String(i + 1).padStart(3, "0")}`,
+      selected_attributes: combo,
+      price: "", trade_price: "", cost_price: "", compare_price: "",
+      stock_qty: "0", weight_kg: "", is_active: true,
+    };
+  }));
+  setIsSimple(false);
+};
 
   // ── Variant helpers ────────────────────────────────────────────
   const updateVariant = (i: number, key: keyof Variant, val: any) => {
@@ -288,7 +336,7 @@ export default function ProductEditPage() {
   
   
   return (
-    <div style={{ padding: 32, maxWidth: 1000 }}>
+    <div style={{ padding: 22, maxWidth: 1000 }}>
    
       <PageHeader
         title={`Edit: ${info.name || "Product"}`}
@@ -304,7 +352,7 @@ export default function ProductEditPage() {
       />
 
       {/* ── Basic Info ── */}
-      <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+      <div className="card" style={{ padding: 14, marginBottom: 20 }}>
         <h2 style={{ fontSize: 15, fontWeight: 600, margin: "0 0 16px" }}>Basic Information</h2>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <div style={{ gridColumn: "1/-1" }}>
@@ -372,10 +420,10 @@ export default function ProductEditPage() {
       </div>
 
       {/* ── Images ── */}
-      <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+      <div className="card" style={{ padding: 14, marginBottom: 20 }}>
         <h2 style={{ fontSize: 15, fontWeight: 600, margin: "0 0 4px" }}>Images</h2>
         <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 16px" }}>First image is primary. Click a non-primary image to set it as primary.</p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-start" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "flex-start" }}>
           {images.map(img => (
             <div key={img.id} style={{ position: "relative", group: true } as any}>
               <img
@@ -428,7 +476,7 @@ export default function ProductEditPage() {
       </div>
 
       {/* ── Attributes ── */}
-      <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+      <div className="card" style={{ padding: 14, marginBottom: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <div>
             <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Attributes</h2>
@@ -447,7 +495,7 @@ export default function ProductEditPage() {
 
         {attrs.map((attr, ai) => (
           <div key={ai} style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 16, marginBottom: 12 }}>
-            <div style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "flex-end" }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "flex-end" }}>
               <div style={{ flex: 1 }}>
                 <label style={lbl}>Attribute Name</label>
                 <input style={inp} placeholder="Eg: thickness" value={attr.name} onChange={e => updateAttr(ai, "name", e.target.value)} />
@@ -486,7 +534,7 @@ export default function ProductEditPage() {
 
       {/* ── Simple Pricing ── */}
       {isSimple && (
-        <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+        <div className="card" style={{ padding: 14, marginBottom: 20 }}>
           <h2 style={{ fontSize: 15, fontWeight: 600, margin: "0 0 4px" }}>Pricing & Stock</h2>
           <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 16px" }}>Simple product — no variants.</p>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
@@ -512,19 +560,29 @@ export default function ProductEditPage() {
           </div>
         </div>
       )}
+      {isSimple && (
+  <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+    {/* ...existing simple pricing fields unchanged... */}
+    <button onClick={addBlankVariant} style={{ marginTop: 14, padding: "8px 16px", borderRadius: 7, background: "#f1f5f9", border: "1px dashed #94a3b8", color: "#475569", cursor: "pointer", fontSize: 13 }}>
+      + Add another price/stock variant
+    </button>
+  </div>
+)}
 
       {/* ── Variants table ── */}
       {!isSimple && variants.length > 0 && (
-        <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+        <div className="card" style={{ padding: 14, marginBottom: 20 }}>
           <div style={{ marginBottom: 16 }}>
             <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Variants & Pricing</h2>
             <p style={{ fontSize: 13, color: "#64748b", margin: "3px 0 0" }}>{variants.length} variants</p>
           </div>
-
+          <button onClick={addBlankVariant} style={{ padding: "7px 14px", borderRadius: 7, background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#475569", cursor: "pointer", fontSize: 13 }}>
+  + Add Variant
+</button>
           {/* Bulk fill */}
           <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 14, marginBottom: 16 }}>
             <p style={{ fontSize: 13, fontWeight: 500, color: "#475569", margin: "0 0 10px" }}>Bulk Fill — apply same value to all variants</p>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
               {[{ key: "price", ph: "Retail Price ₹" }, { key: "trade_price", ph: "Trade Price ₹" }, { key: "cost_price", ph: "Cost Price ₹" }, { key: "stock_qty", ph: "Stock Qty" }].map(f => (
                 <input key={f.key} style={{ ...inp, width: 140 }} placeholder={f.ph} value={(bulk as any)[f.key]} onChange={e => setBulk({ ...bulk, [f.key]: e.target.value })} />
               ))}

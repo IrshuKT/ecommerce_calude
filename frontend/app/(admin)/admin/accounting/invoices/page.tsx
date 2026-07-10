@@ -44,6 +44,17 @@ export default function InvoicesPage() {
 
   const fmt = (n: any) => `₹${parseFloat(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
 
+  const confirmInvoice = async (invoiceNumber: string) => {
+  if (!confirm(`Confirm invoice ${invoiceNumber}? This will deduct stock and post accounting entries. This cannot be undone.`)) return;
+  try {
+    const res = await api.post(`/invoices/${encodeURIComponent(invoiceNumber)}/confirm`);
+    alert(`Invoice confirmed. Voucher: ${res.data.voucher_number}`);
+    load();
+  } catch (err: any) {
+    alert(err?.response?.data?.detail || "Failed to confirm invoice");
+  }
+};
+
   const columns = [
     { key: "invoice_number", label: "Invoice #", render: (r: any) => (
   <span style={{ fontWeight: 600, color: "#0284c7", cursor: "pointer" }}
@@ -67,10 +78,18 @@ export default function InvoicesPage() {
     )},
     { key: "status", label: "Status", render: (r: any) => <StatusBadge status={r.status} /> },
     { key: "actions", label: "", render: (r: any) => (
-  <button onClick={() => router.push(`/admin/accounting/invoices/${encodeURIComponent(r.invoice_number)}`)}
-    style={{ fontSize: 12, color: "#0284c7", background: "none", border: "none", cursor: "pointer" }}>
-    View →
-  </button>
+  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+    {r.status === "draft" && (
+      <button onClick={() => confirmInvoice(r.invoice_number)}
+        style={{ fontSize: 12, color: "#166534", background: "#dcfce7", border: "none", cursor: "pointer", padding: "4px 10px", borderRadius: 6 }}>
+        Confirm →
+      </button>
+    )}
+    <button onClick={() => router.push(`/admin/accounting/invoices/${encodeURIComponent(r.invoice_number)}`)}
+      style={{ fontSize: 12, color: "#0284c7", background: "none", border: "none", cursor: "pointer" }}>
+      View →
+    </button>
+  </div>
 )},
   ];
 

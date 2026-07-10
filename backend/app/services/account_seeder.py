@@ -35,6 +35,7 @@ ACCOUNTS = [
     ("4100","Shipping Income",AccountType.income,None,False),
     ("4200","Other Income",AccountType.income,None,False),
     ("4210","Discount Received",AccountType.income,"4200",False),
+    ("4900","Round Off",AccountType.income,None,False), 
     ("5000","Cost of Goods Sold",AccountType.expense,None,True),
     ("5010","Purchase — Glass",AccountType.expense,"5000",True),
     ("5020","Purchase — Frames & Fittings",AccountType.expense,"5000",False),

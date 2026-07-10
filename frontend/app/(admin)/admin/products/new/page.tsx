@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import PageHeader from "@/components/admin/PageHeader";
 
-
 interface AttrValue { value: string; }
 interface Attr { name: string; display_name: string; values: AttrValue[]; }
 interface Variant {
@@ -24,6 +23,8 @@ export default function AddProductPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [newCatName, setNewCatName] = useState("");
   const [addingCat, setAddingCat] = useState(false);
+  const [showCatInput, setShowCatInput] = useState(false);
+  const [itemType, setItemType] = useState<"product" | "service">("product");
   const [info, setInfo] = useState({ name: "", short_description: "", description: "", category_id: "", hsn_code: "", gst_rate: "18", price_type: "fixed", is_featured: false });
   const [attrs, setAttrs] = useState<Attr[]>([]);
   const [variants, setVariants] = useState<Variant[]>([]);
@@ -33,13 +34,19 @@ export default function AddProductPage() {
   const [simpleCostPrice, setSimpleCostPrice] = useState("");
   const [simpleStock, setSimpleStock] = useState("0");
 
-  useEffect(() => { api.get("/categories/").then(r => setCategories(r.data || [])).catch(() => { }); }, []);
+  const isService = itemType === "service";
+
+  useEffect(() => { api.get("/categories/").then(r => setCategories(r.data || [])).catch(() => {}); }, []);
 
   const addCategory = async () => {
     if (!newCatName.trim()) return;
     setAddingCat(true);
-    try { const res = await api.post("/categories/", { name: newCatName }); setCategories([...categories, res.data]); setInfo({ ...info, category_id: String(res.data.id) }); setNewCatName(""); }
-    catch { alert("Failed to add category"); } finally { setAddingCat(false); }
+    try {
+      const res = await api.post("/categories/", { name: newCatName });
+      setCategories([...categories, res.data]);
+      setInfo({ ...info, category_id: String(res.data.id) });
+      setNewCatName(""); setShowCatInput(false);
+    } catch { alert("Failed to add category"); } finally { setAddingCat(false); }
   };
 
   const addAttr = () => setAttrs([...attrs, { name: "", display_name: "", values: [{ value: "" }] }]);
@@ -50,42 +57,27 @@ export default function AddProductPage() {
   const updateAttrValue = (ai: number, vi: number, val: string) => { const a = [...attrs]; a[ai].values[vi].value = val; setAttrs(a); setVariants([]); };
 
   const generateVariants = () => {
-  const validAttrs = attrs.filter(a => 
-    a.name.trim() && a.values.some(v => v.value.trim())
-  );
-  if (validAttrs.length === 0) { 
-    alert("Add at least one attribute with values"); 
-    return; 
-  }
+    const validAttrs = attrs.filter(a => a.name.trim() && a.values.some(v => v.value.trim()));
+    if (validAttrs.length === 0) { alert("Add at least one attribute with values"); return; }
 
-  const combos = validAttrs.reduce<Record<string, string>[]>((acc, attr) => {
-    // Filter out empty values
-    const vals = attr.values.filter(v => v.value.trim() !== "");
-    if (vals.length === 0) return acc;
-    if (acc.length === 0) return vals.map(v => ({ [attr.name]: v.value }));
-    return acc.flatMap(combo => vals.map(v => ({ ...combo, [attr.name]: v.value })));
-  }, []);
+    const combos = validAttrs.reduce<Record<string, string>[]>((acc, attr) => {
+      const vals = attr.values.filter(v => v.value.trim() !== "");
+      if (vals.length === 0) return acc;
+      if (acc.length === 0) return vals.map(v => ({ [attr.name]: v.value }));
+      return acc.flatMap(combo => vals.map(v => ({ ...combo, [attr.name]: v.value })));
+    }, []);
 
-  // Filter out any combos with empty values
-  const validCombos = combos.filter(combo => 
-    Object.values(combo).every(v => v.trim() !== "")
-  );
+    const validCombos = combos.filter(combo => Object.values(combo).every(v => v.trim() !== ""));
+    if (validCombos.length === 0) { alert("No valid combinations found. Check your attribute values."); return; }
 
-  if (validCombos.length === 0) {
-    alert("No valid combinations found. Check your attribute values.");
-    return;
-  }
-
-  const prefix = info.name.toUpperCase().replace(/\s+/g, "-").slice(0, 6) || "PROD";
-  setVariants(validCombos.map((combo, i) => ({
-    sku: `${prefix}-${Object.values(combo).join("-").toUpperCase().replace(/\s+/g, "").replace(/"/g, "IN")}-${String(i + 1).padStart(3, "0")}`,
-    selected_attributes: combo,
-    price: "", trade_price: "", cost_price: "", compare_price: "", 
-    stock_qty: "0", weight_kg: "",
-  })));
-
-  
-};
+    const prefix = info.name.toUpperCase().replace(/\s+/g, "-").slice(0, 6) || "PROD";
+    setVariants(validCombos.map((combo, i) => ({
+      sku: `${prefix}-${Object.values(combo).join("-").toUpperCase().replace(/\s+/g, "").replace(/"/g, "IN")}-${String(i + 1).padStart(3, "0")}`,
+      selected_attributes: combo,
+      price: "", trade_price: "", cost_price: "", compare_price: "",
+      stock_qty: "0", weight_kg: "",
+    })));
+  };
 
   const updateVariant = (i: number, key: keyof Variant, val: string) => { const v = [...variants]; (v[i] as any)[key] = val; setVariants(v); };
 
@@ -94,15 +86,13 @@ export default function AddProductPage() {
     ...(bulk.price ? { price: bulk.price } : {}),
     ...(bulk.trade_price ? { trade_price: bulk.trade_price } : {}),
     ...(bulk.cost_price ? { cost_price: bulk.cost_price } : {}),
-    ...(bulk.stock_qty ? { stock_qty: bulk.stock_qty } : {}),
+    ...(!isService && bulk.stock_qty ? { stock_qty: bulk.stock_qty } : {}),
   })));
 
   const save = async () => {
     if (!info.name.trim()) { alert("Product name is required"); return; }
 
     let finalVariants = variants;
-
-    // If no variants generated, create one default variant
     if (finalVariants.length === 0) {
       if (!simplePrice) { alert("Please enter at least a retail price"); return; }
       finalVariants = [{
@@ -112,7 +102,7 @@ export default function AddProductPage() {
         trade_price: simpleTradePrice,
         cost_price: simpleCostPrice,
         compare_price: "",
-        stock_qty: simpleStock,
+        stock_qty: isService ? "0" : simpleStock,
         weight_kg: "",
       }];
     } else {
@@ -126,7 +116,9 @@ export default function AddProductPage() {
         description: info.description,
         category_id: info.category_id ? parseInt(info.category_id) : null,
         hsn_code: info.hsn_code, gst_rate: parseFloat(info.gst_rate),
-        price_type: info.price_type, is_featured: info.is_featured,
+        price_type: info.price_type,
+        item_type: itemType,
+        is_featured: info.is_featured,
         attributes: attrs.filter(a => a.name).map(a => ({
           name: a.name, display_name: a.display_name || a.name,
           values: a.values.filter(v => v.value.trim()).map((v, i) => ({ value: v.value, sort_order: i })),
@@ -137,7 +129,7 @@ export default function AddProductPage() {
           trade_price: v.trade_price ? parseFloat(v.trade_price) : null,
           cost_price: v.cost_price ? parseFloat(v.cost_price) : null,
           compare_price: v.compare_price ? parseFloat(v.compare_price) : null,
-          stock_qty: parseInt(v.stock_qty) || 0,
+          stock_qty: isService ? 0 : (parseInt(v.stock_qty) || 0),
           weight_kg: v.weight_kg ? parseFloat(v.weight_kg) : null,
         })),
       });
@@ -146,173 +138,199 @@ export default function AddProductPage() {
     finally { setSaving(false); }
   };
 
-  const inp = { width: "100%", padding: "9px 12px", borderRadius: 7, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "inherit", outline: "none" };
-  const lbl = { display: "block", fontSize: 13, fontWeight: 500, color: "#475569", marginBottom: 5 } as const;
+  const inp = { width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "inherit", outline: "none" };
+  const lbl = { display: "block", fontSize: 12, fontWeight: 500, color: "#64748b", marginBottom: 4 } as const;
+  const card = { padding: 18, marginBottom: 14 } as const;
+  const cardTitle = { fontSize: 14, fontWeight: 600, margin: "0 0 12px", color: "#1e293b" } as const;
 
   return (
-    <div style={{ padding: 32, maxWidth: 1000 }}>
+    <div style={{ padding: 24, maxWidth: 880 }}>
       <PageHeader title="Add Product" subtitle="Fill in details, attributes and variants"
-        action={<div style={{ display: "flex", gap: 10 }}>
+        action={<div style={{ display: "flex", gap: 8 }}>
           <button className="btn-outline" onClick={() => router.back()}>Cancel</button>
-          <button className="btn-primary" onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Product"}</button>
+          <button className="btn-primary" onClick={save} disabled={saving}>{saving ? "Saving..." : "Save"}</button>
         </div>} />
 
+      {/* Type toggle */}
+      <div className="card" style={{ ...card, display: "flex", alignItems: "center", gap: 14 }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: "#475569" }}>Item Type</span>
+        <div style={{ display: "flex", gap: 6, background: "#f1f5f9", padding: 3, borderRadius: 8 }}>
+          {(["product", "service"] as const).map(t => (
+            <button key={t} onClick={() => setItemType(t)} style={{
+              padding: "6px 16px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 500,
+              background: itemType === t ? "white" : "transparent",
+              color: itemType === t ? "#0284c7" : "#64748b",
+              boxShadow: itemType === t ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+            }}>
+              {t === "product" ? "📦 Product" : "🛠️ Service"}
+            </button>
+          ))}
+        </div>
+        {isService && <span style={{ fontSize: 12, color: "#94a3b8" }}>No stock tracking — priced per job/hour</span>}
+      </div>
+
       {/* Basic Info */}
-      <div className="card" style={{ padding: 24, marginBottom: 20 }}>
-        <h2 style={{ fontSize: 15, fontWeight: 600, margin: "0 0 16px" }}>Basic Information</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Product Name *</label><input style={inp} placeholder="Eg: Clear Float Glass" value={info.name} onChange={e => setInfo({ ...info, name: e.target.value })} /></div>
-          <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Short Description</label><input style={inp} placeholder="Brief one-line description" value={info.short_description} onChange={e => setInfo({ ...info, short_description: e.target.value })} /></div>
-          <div style={{ gridColumn: "1/-1" }}><label style={lbl}>Full Description</label><textarea style={{ ...inp, height: 80, resize: "vertical" as const }} placeholder="Detailed product description" value={info.description} onChange={e => setInfo({ ...info, description: e.target.value })} /></div>
+      <div className="card" style={card}>
+        <h2 style={cardTitle}>Basic Information</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div style={{ gridColumn: "1/-1" }}>
+            <label style={lbl}>Name *</label>
+            <input style={inp} placeholder={isService ? "Eg: Glass Cutting Service" : "Eg: Clear Float Glass"} value={info.name} onChange={e => setInfo({ ...info, name: e.target.value })} />
+          </div>
+          <div style={{ gridColumn: "1/-1" }}>
+            <label style={lbl}>Short Description</label>
+            <input style={inp} placeholder="Brief one-line description" value={info.short_description} onChange={e => setInfo({ ...info, short_description: e.target.value })} />
+          </div>
+
           <div>
             <label style={lbl}>Category</label>
-            <select style={inp} value={info.category_id} onChange={e => setInfo({ ...info, category_id: e.target.value })}>
-              <option value="">Select category</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-              <input style={{ ...inp, padding: "7px 10px", fontSize: 13 }} placeholder="Or add new category" value={newCatName} onChange={e => setNewCatName(e.target.value)} />
-              <button onClick={addCategory} disabled={addingCat} style={{ padding: "7px 14px", borderRadius: 6, background: "#0284c7", color: "white", border: "none", cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" as const }}>{addingCat ? "..." : "+ Add"}</button>
-            </div>
+            {!showCatInput ? (
+              <div style={{ display: "flex", gap: 6 }}>
+                <select style={inp} value={info.category_id} onChange={e => setInfo({ ...info, category_id: e.target.value })}>
+                  <option value="">Select category</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <button onClick={() => setShowCatInput(true)} style={{ padding: "0 10px", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", cursor: "pointer", fontSize: 16 }}>+</button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", gap: 6 }}>
+                <input style={inp} autoFocus placeholder="New category name" value={newCatName} onChange={e => setNewCatName(e.target.value)} onKeyDown={e => e.key === "Enter" && addCategory()} />
+                <button onClick={addCategory} disabled={addingCat} style={{ padding: "0 12px", borderRadius: 6, background: "#0284c7", color: "white", border: "none", cursor: "pointer", fontSize: 13 }}>{addingCat ? "..." : "Add"}</button>
+                <button onClick={() => setShowCatInput(false)} style={{ padding: "0 10px", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#94a3b8", cursor: "pointer" }}>✕</button>
+              </div>
+            )}
           </div>
+
           <div>
             <label style={lbl}>Price Type *</label>
             <select style={inp} value={info.price_type} onChange={e => setInfo({ ...info, price_type: e.target.value })}>
-              <option value="fixed">Fixed Price (per unit)</option>
-              <option value="per_sqft">Per Sq.ft (custom dimensions)</option>
+              <option value="fixed">Fixed Price {isService ? "(flat rate)" : "(per unit)"}</option>
+              {!isService && <option value="per_sqft">Per Sq.ft (custom dimensions)</option>}
             </select>
           </div>
-          <div><label style={lbl}>HSN Code</label><input style={inp} placeholder="Eg: 70051090" value={info.hsn_code} onChange={e => setInfo({ ...info, hsn_code: e.target.value })} /></div>
+
+          <div>
+            <label style={lbl}>HSN {isService && "/ SAC"} Code</label>
+            <input style={inp} placeholder={isService ? "Eg: 998719" : "Eg: 70051090"} value={info.hsn_code} onChange={e => setInfo({ ...info, hsn_code: e.target.value })} />
+          </div>
           <div>
             <label style={lbl}>GST Rate (%)</label>
             <select style={inp} value={info.gst_rate} onChange={e => setInfo({ ...info, gst_rate: e.target.value })}>
               <option value="0">0% (Exempt)</option><option value="5">5%</option><option value="12">12%</option><option value="18">18%</option><option value="28">28%</option>
             </select>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <input type="checkbox" id="featured" checked={info.is_featured} onChange={e => setInfo({ ...info, is_featured: e.target.checked })} style={{ width: 16, height: 16 }} />
-            <label htmlFor="featured" style={{ fontSize: 14, color: "#475569", cursor: "pointer" }}>Mark as Featured Product</label>
+
+          <div style={{ gridColumn: "1/-1", display: "flex", alignItems: "center", gap: 8 }}>
+            <input type="checkbox" id="featured" checked={info.is_featured} onChange={e => setInfo({ ...info, is_featured: e.target.checked })} style={{ width: 15, height: 15 }} />
+            <label htmlFor="featured" style={{ fontSize: 13, color: "#475569", cursor: "pointer" }}>Mark as Featured</label>
           </div>
+
+          <details style={{ gridColumn: "1/-1" }}>
+            <summary style={{ fontSize: 12, color: "#0284c7", cursor: "pointer", listStyle: "none" }}>+ Full description</summary>
+            <textarea style={{ ...inp, height: 64, resize: "vertical" as const, marginTop: 6 }} placeholder="Detailed description" value={info.description} onChange={e => setInfo({ ...info, description: e.target.value })} />
+          </details>
         </div>
       </div>
 
-      {/* Attributes */}
-      <div className="card" style={{ padding: 24, marginBottom: 20 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div><h2 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Attributes</h2><p style={{ fontSize: 13, color: "#64748b", margin: "3px 0 0" }}>Define options like Thickness, Finish, Color</p></div>
-          <button onClick={addAttr} style={{ padding: "7px 14px", borderRadius: 7, background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#475569", cursor: "pointer", fontSize: 13 }}>+ Add Attribute</button>
+      {/* Attributes — collapsed by default, still useful for service tiers (e.g. "Duration": 1hr/2hr) */}
+      <div className="card" style={card}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: attrs.length ? 12 : 0 }}>
+          <div>
+            <h2 style={cardTitle}>Attributes {attrs.length > 0 && `(${attrs.length})`}</h2>
+            {attrs.length === 0 && <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>Optional — eg. Thickness, Color, or Duration for services</p>}
+          </div>
+          <button onClick={addAttr} style={{ padding: "6px 12px", borderRadius: 6, background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#475569", cursor: "pointer", fontSize: 12 }}>+ Add Attribute</button>
         </div>
-        {attrs.length === 0 && <div style={{ padding: 24, textAlign: "center", color: "#94a3b8", fontSize: 14, border: "1px dashed #e2e8f0", borderRadius: 8 }}>No attributes yet. Add options like Thickness → 4mm, 6mm, 8mm</div>}
         {attrs.map((attr, ai) => (
-          <div key={ai} style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 16, marginBottom: 12 }}>
-            <div style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "flex-end" }}>
-              <div style={{ flex: 1 }}><label style={lbl}>Attribute Name</label><input style={inp} placeholder="Eg: Thickness" value={attr.name} onChange={e => updateAttr(ai, "name", e.target.value)} /></div>
-              <div style={{ flex: 1 }}><label style={lbl}>Display Name</label><input style={inp} placeholder="Eg: Glass Thickness" value={attr.display_name} onChange={e => updateAttr(ai, "display_name", e.target.value)} /></div>
-              <button onClick={() => removeAttr(ai)} style={{ padding: "9px 12px", borderRadius: 6, background: "#fee2e2", border: "none", color: "#dc2626", cursor: "pointer" }}>✕</button>
+          <div key={ai} style={{ border: "1px solid #e2e8f0", borderRadius: 7, padding: 12, marginBottom: 8, display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" as const }}>
+            <input style={{ ...inp, width: 130 }} placeholder="Name (eg. Thickness)" value={attr.name} onChange={e => updateAttr(ai, "name", e.target.value)} />
+            <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6, flex: 1, minWidth: 200 }}>
+              {attr.values.map((val, vi) => (
+                <div key={vi} style={{ display: "flex", alignItems: "center" }}>
+                  <input style={{ ...inp, width: 80, padding: "6px 8px" }} placeholder="Value" value={val.value} onChange={e => updateAttrValue(ai, vi, e.target.value)} />
+                  {attr.values.length > 1 && <button onClick={() => removeAttrValue(ai, vi)} style={{ background: "none", border: "none", color: "#cbd5e1", cursor: "pointer", marginLeft: 2 }}>✕</button>}
+                </div>
+              ))}
+              <button onClick={() => addAttrValue(ai)} style={{ padding: "6px 10px", borderRadius: 6, background: "#f8fafc", border: "1px dashed #cbd5e1", color: "#64748b", cursor: "pointer", fontSize: 12 }}>+</button>
             </div>
-            <div>
-              <label style={lbl}>Values</label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {attr.values.map((val, vi) => (
-                  <div key={vi} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <input style={{ ...inp, width: 100 }} placeholder="Eg: 4mm" value={val.value} onChange={e => updateAttrValue(ai, vi, e.target.value)} />
-                    {attr.values.length > 1 && <button onClick={() => removeAttrValue(ai, vi)} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 16 }}>✕</button>}
-                  </div>
-                ))}
-                <button onClick={() => addAttrValue(ai)} style={{ padding: "8px 12px", borderRadius: 6, background: "#f8fafc", border: "1px dashed #cbd5e1", color: "#64748b", cursor: "pointer", fontSize: 13 }}>+ Value</button>
-              </div>
-            </div>
+            <button onClick={() => removeAttr(ai)} style={{ padding: "6px 10px", borderRadius: 6, background: "#fee2e2", border: "none", color: "#dc2626", cursor: "pointer" }}>✕</button>
           </div>
         ))}
-        {attrs.length > 0 && <button onClick={generateVariants} style={{ padding: "9px 20px", borderRadius: 8, background: "#0284c7", color: "white", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 500, marginTop: 8 }}>⚡ Generate Variants</button>}
+        {attrs.length > 0 && <button onClick={generateVariants} style={{ padding: "8px 16px", borderRadius: 7, background: "#0284c7", color: "white", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 500 }}>⚡ Generate Variants</button>}
       </div>
-      {/* Simple Pricing — shown when no attributes/variants */}
+
+      {/* Simple pricing */}
       {variants.length === 0 && (
-        <div className="card" style={{ padding: 24, marginBottom: 20 }}>
-          <h2 style={{ fontSize: 15, fontWeight: 600, margin: "0 0 4px" }}>Pricing & Stock</h2>
-          <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 16px" }}>
-            Simple product with no variants — or add attributes above to generate variants with individual prices.
-          </p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
+        <div className="card" style={card}>
+          <h2 style={cardTitle}>Pricing {!isService && "& Stock"}</h2>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${isService ? 3 : 4}, 1fr)`, gap: 12 }}>
             <div>
               <label style={lbl}>Retail Price ₹ *</label>
               <input type="number" style={{ ...inp, borderColor: "#fca5a5" }} placeholder="0.00" value={simplePrice} onChange={e => setSimplePrice(e.target.value)} />
-              <p style={{ fontSize: 11, color: "#94a3b8", margin: "4px 0 0" }}>Public / regular customer price</p>
             </div>
             <div>
               <label style={lbl}>Trade Price ₹</label>
               <input type="number" style={inp} placeholder="0.00" value={simpleTradePrice} onChange={e => setSimpleTradePrice(e.target.value)} />
-              <p style={{ fontSize: 11, color: "#94a3b8", margin: "4px 0 0" }}>Approved buyer price</p>
             </div>
             <div>
               <label style={lbl}>Cost Price ₹</label>
               <input type="number" style={inp} placeholder="0.00" value={simpleCostPrice} onChange={e => setSimpleCostPrice(e.target.value)} />
-              <p style={{ fontSize: 11, color: "#94a3b8", margin: "4px 0 0" }}>Internal cost (not shown to customers)</p>
             </div>
-            <div>
-              <label style={lbl}>Stock Qty</label>
-              <input type="number" style={inp} placeholder="0" value={simpleStock} onChange={e => setSimpleStock(e.target.value)} />
-            </div>
+            {!isService && (
+              <div>
+                <label style={lbl}>Stock Qty</label>
+                <input type="number" style={inp} placeholder="0" value={simpleStock} onChange={e => setSimpleStock(e.target.value)} />
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Variants */}
+      {/* Variants table */}
       {variants.length > 0 && (
-        <div className="card" style={{ padding: 24, marginBottom: 20 }}>
-          <div style={{ marginBottom: 16 }}>
-            <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Variants & Pricing</h2>
-            <p style={{ fontSize: 13, color: "#64748b", margin: "3px 0 0" }}>{variants.length} variants — fill in prices below</p>
+        <div className="card" style={card}>
+          <h2 style={cardTitle}>Variants & Pricing <span style={{ fontWeight: 400, color: "#94a3b8", fontSize: 12 }}>({variants.length})</span></h2>
+          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 7, padding: 10, marginBottom: 12, display: "flex", gap: 8, flexWrap: "wrap" as const, alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: "#64748b" }}>Bulk fill:</span>
+            {[{ key: "price", ph: "Retail ₹" }, { key: "trade_price", ph: "Trade ₹" }, { key: "cost_price", ph: "Cost ₹" }, ...(isService ? [] : [{ key: "stock_qty", ph: "Stock" }])].map(f => (
+              <input key={f.key} style={{ ...inp, width: 100, padding: "6px 8px" }} placeholder={f.ph} value={(bulk as any)[f.key]} onChange={e => setBulk({ ...bulk, [f.key]: e.target.value })} />
+            ))}
+            <button onClick={applyBulk} style={{ padding: "6px 14px", borderRadius: 6, background: "#475569", color: "white", border: "none", cursor: "pointer", fontSize: 12 }}>Apply to All</button>
           </div>
-          {/* Bulk fill */}
-          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 14, marginBottom: 16 }}>
-            <p style={{ fontSize: 13, fontWeight: 500, color: "#475569", margin: "0 0 10px" }}>Bulk Fill (apply same value to all variants)</p>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-              {[{ key: "price", ph: "Retail Price ₹" }, { key: "trade_price", ph: "Trade Price ₹" }, { key: "cost_price", ph: "Cost Price ₹" }, { key: "stock_qty", ph: "Stock Qty" }].map(f => (
-                <input key={f.key} style={{ ...inp, width: 140 }} placeholder={f.ph} value={(bulk as any)[f.key]} onChange={e => setBulk({ ...bulk, [f.key]: e.target.value })} />
-              ))}
-              <button onClick={applyBulk} style={{ padding: "9px 16px", borderRadius: 7, background: "#475569", color: "white", border: "none", cursor: "pointer", fontSize: 13 }}>Apply to All</button>
-            </div>
-          </div>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <div style={{ overflowX: "auto" as const }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" as const, fontSize: 12 }}>
               <thead><tr style={{ borderBottom: "1px solid #e2e8f0" }}>
-                {["Variant", "SKU", "Cost ₹", "Retail ₹ *", "Trade ₹", "MRP ₹", "Stock"].map((h, i) => (
-                  <th key={h} style={{ textAlign: "left", padding: "8px 8px", color: "#64748b", fontWeight: 600, fontSize: 12, background: i === 3 ? "#fef9c3" : i === 4 ? "#d1fae5" : "transparent" }}>{h}</th>
+                {["Variant", "SKU", "Cost ₹", "Retail ₹ *", "Trade ₹", "MRP ₹", ...(isService ? [] : ["Stock"])].map((h, i) => (
+                  <th key={h} style={{ textAlign: "left" as const, padding: "6px 6px", color: "#64748b", fontWeight: 600, background: i === 3 ? "#fef9c3" : i === 4 ? "#d1fae5" : "transparent" }}>{h}</th>
                 ))}
               </tr></thead>
               <tbody>
                 {variants.map((v, i) => (
                   <tr key={i} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                    <td style={{ padding: "8px 8px" }}>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    <td style={{ padding: "6px" }}>
+                      <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 3 }}>
                         {Object.entries(v.selected_attributes).map(([k, val]) => (
-                          <span key={k} style={{ fontSize: 11, background: "#eff6ff", color: "#0369a1", padding: "2px 7px", borderRadius: 4 }}>{val}</span>
+                          <span key={k} style={{ fontSize: 10, background: "#eff6ff", color: "#0369a1", padding: "1px 6px", borderRadius: 4 }}>{val}</span>
                         ))}
                       </div>
                     </td>
-                    <td style={{ padding: "6px 6px" }}><input style={{ ...inp, width: 140, padding: "6px 8px", fontSize: 12 }} value={v.sku} onChange={e => updateVariant(i, "sku", e.target.value)} /></td>
-                    <td style={{ padding: "6px 6px" }}><input type="number" style={{ ...inp, width: 85, padding: "6px 8px" }} placeholder="0.00" value={v.cost_price} onChange={e => updateVariant(i, "cost_price", e.target.value)} /></td>
-                    <td style={{ padding: "6px 6px", background: "#fefce8" }}><input type="number" style={{ ...inp, width: 85, padding: "6px 8px", borderColor: v.price ? "#e2e8f0" : "#fca5a5" }} placeholder="0.00 *" value={v.price} onChange={e => updateVariant(i, "price", e.target.value)} /></td>
-                    <td style={{ padding: "6px 6px", background: "#f0fdf4" }}><input type="number" style={{ ...inp, width: 85, padding: "6px 8px" }} placeholder="0.00" value={v.trade_price} onChange={e => updateVariant(i, "trade_price", e.target.value)} /></td>
-                    <td style={{ padding: "6px 6px" }}><input type="number" style={{ ...inp, width: 85, padding: "6px 8px" }} placeholder="0.00" value={v.compare_price} onChange={e => updateVariant(i, "compare_price", e.target.value)} /></td>
-                    <td style={{ padding: "6px 6px" }}><input type="number" style={{ ...inp, width: 70, padding: "6px 8px" }} placeholder="0" value={v.stock_qty} onChange={e => updateVariant(i, "stock_qty", e.target.value)} /></td>
+                    <td style={{ padding: "4px" }}><input style={{ ...inp, width: 120, padding: "5px 7px", fontSize: 11 }} value={v.sku} onChange={e => updateVariant(i, "sku", e.target.value)} /></td>
+                    <td style={{ padding: "4px" }}><input type="number" style={{ ...inp, width: 72, padding: "5px 7px" }} placeholder="0.00" value={v.cost_price} onChange={e => updateVariant(i, "cost_price", e.target.value)} /></td>
+                    <td style={{ padding: "4px", background: "#fefce8" }}><input type="number" style={{ ...inp, width: 72, padding: "5px 7px", borderColor: v.price ? "#e2e8f0" : "#fca5a5" }} placeholder="0.00*" value={v.price} onChange={e => updateVariant(i, "price", e.target.value)} /></td>
+                    <td style={{ padding: "4px", background: "#f0fdf4" }}><input type="number" style={{ ...inp, width: 72, padding: "5px 7px" }} placeholder="0.00" value={v.trade_price} onChange={e => updateVariant(i, "trade_price", e.target.value)} /></td>
+                    <td style={{ padding: "4px" }}><input type="number" style={{ ...inp, width: 72, padding: "5px 7px" }} placeholder="0.00" value={v.compare_price} onChange={e => updateVariant(i, "compare_price", e.target.value)} /></td>
+                    {!isService && <td style={{ padding: "4px" }}><input type="number" style={{ ...inp, width: 60, padding: "5px 7px" }} placeholder="0" value={v.stock_qty} onChange={e => updateVariant(i, "stock_qty", e.target.value)} /></td>}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <div style={{ marginTop: 10, display: "flex", gap: 8, fontSize: 12, color: "#64748b" }}>
-            <span style={{ background: "#fef9c3", padding: "2px 8px", borderRadius: 4 }}>🟡 Retail = Public price</span>
-            <span style={{ background: "#d1fae5", padding: "2px 8px", borderRadius: 4 }}>🟢 Trade = Approved buyer price</span>
-            <span style={{ background: "#f1f5f9", padding: "2px 8px", borderRadius: 4 }}>⚫ Cost = Internal only</span>
-          </div>
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
         <button className="btn-outline" onClick={() => router.back()}>Cancel</button>
-        <button className="btn-primary" onClick={save} disabled={saving} style={{ minWidth: 140 }}>{saving ? "Saving..." : "Save Product"}</button>
+        <button className="btn-primary" onClick={save} disabled={saving} style={{ minWidth: 130 }}>{saving ? "Saving..." : "Save Product"}</button>
       </div>
     </div>
   );
