@@ -24,6 +24,67 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const logoRef = useRef<HTMLInputElement>(null);
+   const [backups, setBackups] = useState<any[]>([]);
+  const [backingUp, setBackingUp] = useState(false);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoreConfirm, setRestoreConfirm] = useState("");
+  const [restoring, setRestoring] = useState(false);
+  const [selectedBackup, setSelectedBackup] = useState("");
+
+  const doRestoreExisting = async () => {
+    if (!selectedBackup) return;
+    setRestoring(true);
+    try {
+      await api.post("/settings/backup/restore-existing", { filename: selectedBackup, confirm: restoreConfirm });
+      alert("Restored successfully. Reloading...");
+      window.location.reload();
+    } catch (e: any) { alert(e.response?.data?.detail || "Restore failed"); }
+    finally { setRestoring(false); }
+  };
+   const loadBackups = () => api.get("/settings/backup/list").then(r => setBackups(r.data)).catch(() => {});
+  useEffect(() => { loadBackups(); }, []);
+
+  const runBackup = async () => {
+    setBackingUp(true);
+    try { await api.post("/settings/backup/run"); loadBackups(); }
+    catch (e: any) { alert(e.response?.data?.detail || "Backup failed"); }
+    finally { setBackingUp(false); }
+  };
+  const downloadBackup = async (filename: string) => {
+  try {
+    const res = await api.get(`/settings/backup/${filename}/download`, { responseType: "blob" });
+    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (e: any) {
+    alert("Download failed — check console");
+    console.error(e);
+  }
+};
+  const deleteBackup = async (filename: string) => {
+    if (!confirm(`Delete ${filename}?`)) return;
+    await api.delete(`/settings/backup/${filename}`);
+    loadBackups();
+  };
+
+  const doRestore = async () => {
+    if (!restoreFile) return;
+    setRestoring(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", restoreFile);
+      fd.append("confirm", restoreConfirm);
+      await api.post("/settings/backup/restore", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      alert("Restored successfully. Reloading...");
+      window.location.reload();
+    } catch (e: any) { alert(e.response?.data?.detail || "Restore failed"); }
+    finally { setRestoring(false); }
+  };
 
   useEffect(() => {
     api.get("/settings/").then(r => { setForm(r.data); setLoading(false); }).catch(() => setLoading(false));
@@ -210,6 +271,88 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+      {/* Backup & Restore */}
+  <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+    <h2 style={{ fontSize: 15, fontWeight: 600, margin: "0 0 4px" }}>Backup & Restore</h2>
+    <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 16px" }}>Database backups (settings, products, orders, accounting)</p>
+
+    <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "center" }}>
+      <button onClick={runBackup} disabled={backingUp} className="btn-primary">
+        {backingUp ? "Backing up..." : "Backup Now"}
+      </button>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+        <input type="checkbox" checked={form.auto_backup_enabled || false}
+          onChange={e => set("auto_backup_enabled", e.target.checked)} />
+        Auto-backup daily at
+        <input type="time" style={{ ...inp, width: 110, padding: "5px 8px" }}
+          value={form.auto_backup_time || "02:00"}
+          onChange={e => set("auto_backup_time", e.target.value)} />
+      </label>
+      <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+        Keep for
+        <input type="number" style={{ ...inp, width: 60, padding: "5px 8px" }}
+          value={form.auto_backup_retention_days ?? 7}
+          onChange={e => set("auto_backup_retention_days", parseInt(e.target.value) || 7)} />
+        days
+      </label>
+    </div>
+
+    <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+      <thead>
+        <tr style={{ borderBottom: "1px solid #e2e8f0", color: "#64748b", textAlign: "left" }}>
+          <th style={{ padding: "6px 4px" }}>File</th>
+          <th style={{ padding: "6px 4px" }}>Size</th>
+          <th style={{ padding: "6px 4px" }}>Created</th>
+          <th style={{ padding: "6px 4px" }}></th>
+        </tr>
+      </thead>
+      <tbody>
+        {backups.map(b => (
+          <tr key={b.filename} style={{ borderBottom: "1px solid #f1f5f9" }}>
+            <td style={{ padding: "6px 4px" }}>{b.filename}</td>
+            <td style={{ padding: "6px 4px" }}>{(b.size_bytes / 1024 / 1024).toFixed(2)} MB</td>
+            <td style={{ padding: "6px 4px" }}>{new Date(b.created_at).toLocaleString()}</td>
+            <td style={{ padding: "6px 4px", display: "flex", gap: 8 }}>
+              <button onClick={() => downloadBackup(b.filename)} style={{ color: "#2563eb", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Download</button>
+              <button onClick={() => deleteBackup(b.filename)} style={{ color: "#dc2626", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Delete</button>
+            </td>
+          </tr>
+        ))}
+        {backups.length === 0 && <tr><td colSpan={4} style={{ padding: 12, color: "#94a3b8" }}>No backups yet</td></tr>}
+      </tbody>
+    </table>
+
+    <div style={{ marginTop: 20, padding: 16, background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
+  <h3 style={{ fontSize: 13, fontWeight: 600, color: "#991b1b", margin: "0 0 8px" }}>Restore from backup</h3>
+  <p style={{ fontSize: 12, color: "#991b1b", margin: "0 0 10px" }}>
+    This replaces your current database with the selected backup. Cannot be undone.
+  </p>
+
+  <select style={{ ...inp, marginBottom: 10 }} value={selectedBackup} onChange={e => setSelectedBackup(e.target.value)}>
+    <option value="">Select an existing backup…</option>
+    {backups.map(b => (
+      <option key={b.filename} value={b.filename}>
+        {b.filename} — {new Date(b.created_at).toLocaleString()}
+      </option>
+    ))}
+  </select>
+
+  <p style={{ fontSize: 12, color: "#991b1b", margin: "0 0 6px" }}>— or upload a backup file from elsewhere —</p>
+  <input type="file" accept=".dump" onChange={e => { setRestoreFile(e.target.files?.[0] || null); setSelectedBackup(""); }} style={{ fontSize: 13, marginBottom: 10 }} />
+
+  <br />
+  <input placeholder='Type RESTORE to confirm' value={restoreConfirm}
+    onChange={e => setRestoreConfirm(e.target.value)}
+    style={{ ...inp, width: 220, display: "inline-block", marginRight: 8 }} />
+
+  <button
+    onClick={selectedBackup ? doRestoreExisting : doRestore}
+    disabled={restoring || restoreConfirm.trim().toUpperCase() !== "RESTORE" || (!selectedBackup && !restoreFile)}
+    className="btn-primary" style={{ background: "#dc2626" }}>
+    {restoring ? "Restoring..." : "Restore Database"}
+  </button>
+</div>
+  </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <button onClick={save} disabled={saving} className="btn-primary" style={{ minWidth: 140 }}>

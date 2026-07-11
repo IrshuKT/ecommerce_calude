@@ -9,6 +9,7 @@ type SaleSummary = {
   total_amount: number;
   status: string;
   created_at: string;
+  customer_display_name: string | null;
 };
 
 type SaleDetail = {
@@ -18,6 +19,7 @@ type SaleDetail = {
   total_amount: number;
   status: string;
   created_at: string;
+  customer_display_name: string | null;
   items: { product_name: string; sku: string; quantity: number; unit_price: number; line_total: number }[];
   payments: { method: string; amount: number }[];
 };
@@ -74,6 +76,7 @@ export default function POSHistoryPage() {
           <thead>
             <tr style={{ background: "#f8fafc", color: "#64748b", textAlign: "left" }}>
               <th style={{ padding: "10px 16px" }}>Sale #</th>
+              <th style={{ padding: "10px 16px" }}>Customer</th>
               <th style={{ padding: "10px 16px", textAlign: "right" }}>Total</th>
               <th style={{ padding: "10px 16px" }}>Status</th>
               <th style={{ padding: "10px 16px" }}>Date</th>
@@ -95,6 +98,7 @@ export default function POSHistoryPage() {
                 onMouseLeave={(e) => (e.currentTarget.style.background = "white")}
               >
                 <td style={{ padding: "10px 16px", fontWeight: 500 }}>{s.sale_number}</td>
+                <td style={{ padding: "10px 16px", color: "#475569" }}>{s.customer_display_name}</td> 
                 <td style={{ padding: "10px 16px", textAlign: "right" }}>{s.total_amount.toFixed(2)}</td>
                 <td style={{ padding: "10px 16px" }}>
                   <span style={{
@@ -128,16 +132,19 @@ export default function POSHistoryPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 4 }}>
-              <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>{selected.sale_number}</h3>
-              <span style={{
-                padding: "2px 10px", borderRadius: 20, fontSize: 12,
-                background: selected.status === "voided" ? "#fee2e2" : "#dcfce7",
-                color: selected.status === "voided" ? "#991b1b" : "#166534",
-                textTransform: "capitalize",
-              }}>
-                {selected.status}
-              </span>
-            </div>
+  <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>{selected.sale_number}</h3>
+  <span style={{
+    padding: "2px 10px", borderRadius: 20, fontSize: 12,
+    background: selected.status === "voided" ? "#fee2e2" : "#dcfce7",
+    color: selected.status === "voided" ? "#991b1b" : "#166534",
+    textTransform: "capitalize",
+  }}>
+    {selected.status}
+  </span>
+</div>
+<div style={{ fontSize: 13, color: "#475569", marginBottom: 2 }}>{selected.customer_display_name}</div>
+
+            
             <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 16 }}>
               {new Date(selected.created_at).toLocaleString()}
             </div>

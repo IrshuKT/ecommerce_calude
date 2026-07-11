@@ -322,6 +322,9 @@ class CompanySettings(Base):
     website: Mapped[Optional[str]] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
+    auto_backup_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    auto_backup_time: Mapped[str] = mapped_column(String(5), default="12:00")   # 24h "HH:MM"
+    auto_backup_retention_days: Mapped[int] = mapped_column(Integer, default=7)
 
 
 class StockTxnType(str, enum.Enum):

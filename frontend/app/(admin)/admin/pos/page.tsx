@@ -23,7 +23,7 @@ type CartLine = {
 
 type PaymentLine = {
   method: "cash" | "card" | "upi";
-  amount: string; // kept as string while typing, parsed on submit
+  amount: string;
 };
 
 type ReceiptData = {
@@ -45,6 +45,23 @@ type CustomerResult = {
   role: string;
 };
 
+// NEW: held sale summary (list) + full detail (resume)
+type HeldSaleSummary = {
+  sale_number: string;
+  total_amount: number;
+  customer_display_name: string;
+  created_at: string;
+};
+
+type HeldSaleDetail = {
+  sale_number: string;
+  discount_amount: number;
+  customer_id: number | null;
+  walk_in_name: string | null;
+  notes: string | null;
+  items: { variant_id: number; sku: string; product_name: string; quantity: number; unit_price: number }[];
+};
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function POSPage() {
@@ -59,8 +76,6 @@ export default function POSPage() {
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
 
-  // Customer: defaults to anonymous "Cash Customer". Either pick an existing
-  // customer, or just type a walk-in name (not saved as a customer record).
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [customerTab, setCustomerTab] = useState<"existing" | "walkin">("walkin");
   const [selectedCustomer, setSelectedCustomer] = useState<{ id: number; name: string } | null>(null);
@@ -72,6 +87,17 @@ export default function POSPage() {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  // ── NEW: hold-sale state ──────────────────────────────────────────────
+  const [activeSaleNumber, setActiveSaleNumber] = useState<string | null>(null); // null = new sale
+  const [saving, setSaving] = useState(false);
+  const [showHeldModal, setShowHeldModal] = useState(false);
+  const [heldSales, setHeldSales] = useState<HeldSaleSummary[]>([]);
+  const [loadingHeld, setLoadingHeld] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  function printPreview() {
+  setShowPreview(true);
+}
+
   useEffect(() => {
     searchInputRef.current?.focus();
   }, []);
@@ -80,7 +106,7 @@ export default function POSPage() {
   const discountNum = parseFloat(discount) || 0;
   const total = Math.max(subtotal - discountNum, 0);
 
-  // ─── Search (also handles exact barcode/SKU scans) ───────────────────────
+  // ─── Search ────────────────────────────────────────────────────────────
 
   async function handleSearch(value: string) {
     setQuery(value);
@@ -99,7 +125,6 @@ export default function POSPage() {
     }
   }
 
-  // Barcode scanners typically end input with Enter — try an exact-match lookup first
   async function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Enter" || !query.trim()) return;
     try {
@@ -108,7 +133,6 @@ export default function POSPage() {
       setQuery("");
       setResults([]);
     } catch {
-      // not an exact SKU match — fall back to whatever the search dropdown already found
       if (results.length === 1) {
         addToCart(results[0]);
         setQuery("");
@@ -214,12 +238,14 @@ export default function POSPage() {
   }
 
   function openCheckout() {
-    if (cart.length === 0) return;
-    setPayments([{ method: "cash", amount: total.toFixed(2) }]);
-    setError(null);
-    setShowCheckout(true);
-  }
+  if (cart.length === 0) return;
+  setShowPreview(false); // close preview if it was open
+  setPayments([{ method: "cash", amount: total.toFixed(2) }]);
+  setError(null);
+  setShowCheckout(true);
+}
 
+  // ── UPDATED: routes to held-sale checkout endpoint when editing a held sale ──
   async function completeSale() {
     if (!paymentsMatch) {
       setError(`Payments (${paymentsTotal.toFixed(2)}) must equal total (${total.toFixed(2)})`);
@@ -228,7 +254,7 @@ export default function POSPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const res = await posApi.post("/pos/sales", {
+      const body = {
         items: cart.map((l) => ({
           variant_id: l.variant_id,
           quantity: l.quantity,
@@ -238,13 +264,15 @@ export default function POSPage() {
         discount_amount: discountNum,
         customer_id: selectedCustomer?.id ?? null,
         walk_in_name: walkInName || null,
-      });
+      };
+
+      const res = activeSaleNumber
+        ? await posApi.post(`/pos/sales/held/${encodeURIComponent(activeSaleNumber)}/checkout`, body)
+        : await posApi.post("/pos/sales", body);
+
       setReceipt(res.data);
       setShowCheckout(false);
-      setCart([]);
-      setDiscount("0");
-      setSelectedCustomer(null);
-      setWalkInName("");
+      resetSaleState();
     } catch (err: any) {
       setError(err?.response?.data?.detail || "Failed to complete sale");
     } finally {
@@ -255,6 +283,98 @@ export default function POSPage() {
   function startNewSale() {
     setReceipt(null);
     searchInputRef.current?.focus();
+  }
+
+  // ── NEW: shared reset after checkout / new-sale / discard ──────────────
+  function resetSaleState() {
+    setCart([]);
+    setDiscount("0");
+    setSelectedCustomer(null);
+    setWalkInName("");
+    setActiveSaleNumber(null);
+  }
+
+  // ── NEW: Save (hold) the current cart ───────────────────────────────────
+  async function saveSale() {
+    if (cart.length === 0) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const body = {
+        items: cart.map((l) => ({
+          variant_id: l.variant_id,
+          quantity: l.quantity,
+          unit_price: l.unit_price,
+        })),
+        discount_amount: discountNum,
+        customer_id: selectedCustomer?.id ?? null,
+        walk_in_name: walkInName || null,
+      };
+
+      if (activeSaleNumber) {
+        await posApi.patch(`/pos/sales/held/${encodeURIComponent(activeSaleNumber)}`, body);
+      } else {
+        const res = await posApi.post("/pos/sales/hold", body);
+        setActiveSaleNumber(res.data.sale_number);
+      }
+      resetSaleState();
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || "Failed to save sale");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ── NEW: Held sales list / resume / discard ─────────────────────────────
+  async function openHeldSales() {
+    setShowHeldModal(true);
+    setLoadingHeld(true);
+    try {
+      const res = await posApi.get("/pos/sales/held");
+      setHeldSales(res.data);
+    } catch {
+      setHeldSales([]);
+    } finally {
+      setLoadingHeld(false);
+    }
+  }
+
+  async function resumeSale(sale_number: string) {
+    try {
+      const res = await posApi.get<HeldSaleDetail>(`/pos/sales/held/${encodeURIComponent(sale_number)}`);
+      const data = res.data;
+      setCart(
+        data.items.map((i) => ({
+          variant_id: i.variant_id,
+          sku: i.sku,
+          product_name: i.product_name,
+          unit_price: i.unit_price,
+          quantity: i.quantity,
+        }))
+      );
+      setDiscount(String(data.discount_amount ?? 0));
+      setWalkInName(data.walk_in_name || "");
+      setSelectedCustomer(
+        data.customer_id ? { id: data.customer_id, name: data.walk_in_name || "Customer" } : null
+      );
+      setActiveSaleNumber(data.sale_number);
+      setShowHeldModal(false);
+      searchInputRef.current?.focus();
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || "Failed to resume sale");
+    }
+  }
+
+  async function discardSale(sale_number: string) {
+    try {
+      await posApi.delete(`/pos/sales/held/${encodeURIComponent(sale_number)}`);
+      setHeldSales((prev) => prev.filter((s) => s.sale_number !== sale_number));
+      if (activeSaleNumber === sale_number) {
+        resetSaleState();
+      }
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || "Failed to discard sale");
+    }
   }
 
   // ─── Receipt view ───────────────────────────────────────────────────────
@@ -328,6 +448,30 @@ export default function POSPage() {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6">
       {/* Left: search + cart */}
       <div className="lg:col-span-2 space-y-4">
+        {/* NEW: top bar — active sale indicator + Held Sales button */}
+        <div className="flex items-center justify-between">
+          <div>
+            {activeSaleNumber && (
+              <span className="inline-flex items-center gap-2 bg-amber-50 text-amber-700 text-sm font-medium px-3 py-1.5 rounded-lg border border-amber-200">
+                Editing held sale: {activeSaleNumber}
+                <button
+                  onClick={() => resetSaleState()}
+                  className="text-amber-500 hover:text-amber-700"
+                  title="Start a new sale instead"
+                >
+                  ✕
+                </button>
+              </span>
+            )}
+          </div>
+          <button
+            onClick={openHeldSales}
+            className="text-sm font-medium border rounded-lg px-3 py-2 hover:bg-gray-50 flex items-center gap-2"
+          >
+            🧾 Held Sales
+          </button>
+        </div>
+
         <div className="relative">
           <input
             ref={searchInputRef}
@@ -454,14 +598,86 @@ export default function POSPage() {
           <span>Total</span>
           <span>{total.toFixed(2)}</span>
         </div>
-        <button
-          onClick={openCheckout}
-          disabled={cart.length === 0}
-          className="w-full bg-blue-600 text-white rounded-lg py-3 font-medium disabled:opacity-40"
-        >
-          Checkout
-        </button>
+
+        {error && <div className="text-sm text-red-500">{error}</div>}
+
+        {/* NEW: Save + Checkout side by side */}
+        <div className="flex gap-2">
+          <button
+            onClick={saveSale}
+            disabled={cart.length === 0 || saving}
+            className="flex-1 border border-blue-600 text-blue-600 rounded-lg py-3 font-medium disabled:opacity-40"
+          >
+            {saving ? "Saving…" : activeSaleNumber ? "Update Save" : "Save"}
+          </button>
+          <button
+            onClick={openCheckout}
+            disabled={cart.length === 0}
+            className="flex-1 bg-blue-600 text-white rounded-lg py-3 font-medium disabled:opacity-40"
+          >
+            Checkout
+          </button>
+        </div>
       </div>
+
+      {/* NEW: Pre-checkout confirmation preview */}
+{showPreview && (
+  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4 print:static print:bg-white print:p-0">
+    <div className="bg-white rounded-xl p-6 w-full max-w-md space-y-4 print:shadow-none print:rounded-none" id="preview-slip">
+      <div className="flex items-center justify-between print:hidden">
+        <h3 className="font-semibold text-lg">Confirm with Customer</h3>
+        <button onClick={() => setShowPreview(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+      </div>
+
+      <div className="text-center">
+        <h2 className="text-lg font-semibold">Order Confirmation</h2>
+        <p className="text-xs text-gray-400 mt-1">Not a valid receipt — for confirmation only</p>
+        <p className="text-sm text-gray-700 font-medium mt-2">{customerDisplayName}</p>
+        {activeSaleNumber && <p className="text-xs text-gray-400">{activeSaleNumber}</p>}
+      </div>
+
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-gray-500">
+            <th className="py-1">Item</th>
+            <th className="py-1 text-right">Qty</th>
+            <th className="py-1 text-right">Price</th>
+            <th className="py-1 text-right">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {cart.map((line) => (
+            <tr key={line.variant_id} className="border-b border-dashed">
+              <td className="py-1">{line.product_name}<div className="text-xs text-gray-400">{line.sku}</div></td>
+              <td className="py-1 text-right">{line.quantity}</td>
+              <td className="py-1 text-right">{line.unit_price.toFixed(2)}</td>
+              <td className="py-1 text-right">{(line.unit_price * line.quantity).toFixed(2)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="space-y-1 text-sm">
+        <div className="flex justify-between"><span>Subtotal</span><span>{subtotal.toFixed(2)}</span></div>
+        <div className="flex justify-between"><span>Discount</span><span>-{discountNum.toFixed(2)}</span></div>
+        <div className="flex justify-between font-semibold text-base border-t pt-1">
+          <span>Total</span><span>{total.toFixed(2)}</span>
+        </div>
+      </div>
+
+      <p className="text-center text-xs text-gray-400 print:mt-4">Please confirm before payment</p>
+
+      <div className="flex gap-3 pt-2 print:hidden">
+        <button onClick={() => setShowPreview(false)} className="flex-1 border rounded-lg py-2 font-medium">
+          Close
+        </button>
+       <button onClick={() => window.print()} className="flex-1 bg-gray-800 text-white rounded-lg py-2 font-medium">
+  Print
+</button>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* Checkout modal */}
       {showCheckout && (
@@ -509,6 +725,15 @@ export default function POSPage() {
             </div>
 
             {error && <div className="text-sm text-red-500">{error}</div>}
+           <div className="flex justify-center">
+  <button
+    onClick={printPreview}
+    className="text-sm font-medium border rounded-lg px-4 py-2 hover:bg-gray-50"
+  >
+    🖨️ Preview before confirming
+  </button>
+</div>
+
 
             <div className="flex gap-3 pt-2">
               <button
@@ -609,6 +834,57 @@ export default function POSPage() {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* NEW: Held Sales modal */}
+      {showHeldModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-lg space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-lg">Held Sales</h3>
+              <button onClick={() => setShowHeldModal(false)} className="text-gray-400 hover:text-gray-600">
+                ✕
+              </button>
+            </div>
+
+            {loadingHeld ? (
+              <div className="text-center text-gray-400 py-8">Loading…</div>
+            ) : heldSales.length === 0 ? (
+              <div className="text-center text-gray-400 py-8">No held sales</div>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {heldSales.map((s) => (
+                  <div
+                    key={s.sale_number}
+                    className="flex items-center justify-between border rounded-lg px-4 py-3"
+                  >
+                    <div>
+                      <div className="font-medium text-sm">{s.sale_number}</div>
+                      <div className="text-xs text-gray-400">
+                        {s.customer_display_name} · {new Date(s.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-medium text-sm">{s.total_amount.toFixed(2)}</span>
+                      <button
+                        onClick={() => resumeSale(s.sale_number)}
+                        className="text-blue-600 text-sm font-medium"
+                      >
+                        Resume
+                      </button>
+                      <button
+                        onClick={() => discardSale(s.sale_number)}
+                        className="text-red-500 text-sm font-medium"
+                      >
+                        Discard
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -1,14 +1,15 @@
 "use client";
-import { useState,useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import api from "@/lib/api";
 import Link from "next/link";
 import PageHeader from "@/components/admin/PageHeader";
 
-// ─── menu structure ─────────────────────────────────────────────────────────
+// ─── menu structure (used for breadcrumb/title lookup only — the actual nav
+// now lives in AdminSidebar under the expandable "Reports" item) ────────────
 const MENU = [
   {
     group: "Accounting",
-    icon: "📊",
     items: [
       { key: "pl",  label: "Profit & Loss" },
       { key: "tb",  label: "Trial Balance" },
@@ -20,7 +21,6 @@ const MENU = [
   },
   {
     group: "Inventory",
-    icon: "📦",
     items: [
       { key: "stock",      label: "Stock Report"    },
       { key: "stockvalue", label: "Stock Valuation" },
@@ -28,7 +28,6 @@ const MENU = [
   },
   {
     group: "GST Returns",
-    icon: "🧾",
     items: [
       { key: "gstr1",  label: "GSTR-1"  },
       { key: "gstr3b", label: "GSTR-3B" },
@@ -44,19 +43,14 @@ const fmt = (n: any) =>
   `₹${parseFloat(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
 
 // ─── page ────────────────────────────────────────────────────────────────────
-export default function ReportsPage() {
+function ReportsPageInner() {
+  const searchParams = useSearchParams();
+  const active = searchParams.get("report") || "pl";
+
   const today    = new Date().toISOString().split("T")[0];
   const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
                      .toISOString().split("T")[0];
 
-  // sidebar: which groups are open
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(
-    Object.fromEntries(MENU.map((g) => [g.group, true]))
-  );
-  const toggleGroup = (g: string) =>
-    setOpenGroups((prev) => ({ ...prev, [g]: !prev[g] }));
-
-  const [active,    setActive]    = useState("pl");
   const [fromDate,  setFromDate]  = useState(firstDay);
   const [toDate,    setToDate]    = useState(today);
   const [month,     setMonth]     = useState(new Date().getMonth() + 1);
@@ -64,9 +58,13 @@ export default function ReportsPage() {
   const [accountId, setAccountId] = useState("");
   const [data,      setData]      = useState<any>(null);
   const [loading,   setLoading]   = useState(false);
+  const [accounts,  setAccounts]  = useState<any[]>([]);
 
-  const handleSelect = (key: string) => { setActive(key); setData(null); };
-  const [accounts, setAccounts] = useState<any[]>([]);
+  // Clear stale report data whenever the selected report changes (navigated
+  // from the sidebar), so switching reports doesn't briefly show the old table.
+  useEffect(() => {
+    setData(null);
+  }, [active]);
 
   useEffect(() => {
     api.get("/accounting/accounts")
@@ -92,6 +90,7 @@ export default function ReportsPage() {
       else if (active === "cashbook")   res = await api.get(`/reports/cash-book?${params}`);
       else if (active === "daybook")    res = await api.get(`/reports/day-book?${params}`);
       else if (active === "ledger") res = await api.get(`/reports/ledger?account_code=${accountId}&${params}`);
+      else if (active === "stock")      res = await api.get(`/reports/stock?${params}`);
       else if (active === "stockvalue") res = await api.get(`/reports/stock-value?${asOf}`);
       else if (active === "gstr1")      res = await api.get(`/gst/gstr1?${gst}`);
       else if (active === "gstr3b")     res = await api.get(`/gst/gstr3b?${gst}`);
@@ -109,195 +108,107 @@ export default function ReportsPage() {
   const activeGroup =
     MENU.find((g) => g.items.some((i) => i.key === active))?.group ?? "";
 
-  
-
   return (
-    <div style={{ display: "flex", height: "calc(100vh - 64px)", overflow: "hidden" }}>
+    <div style={{ padding: 32 }}>
+      {/* breadcrumb */}
+      <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 4px" }}>
+        Reports › {activeGroup}
+      </p>
+      <PageHeader title={activeLabel} subtitle="Generate and view financial reports" />
 
-      {/* ── Sidebar ─────────────────────────────────────────────────────── */}
-      <aside style={{
-        width: 220,
-        flexShrink: 0,
-        background: "#f8fafc",
-        borderRight: "1px solid #e2e8f0",
-        overflowY: "auto",
-        padding: "16px 0",
-      }}>
-        <p style={{
-          fontSize: 11,
-          fontWeight: 700,
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          color: "#94a3b8",
-          padding: "0 16px 12px",
-          margin: 0,
-        }}>Reports</p>
+      {/* Filters */}
+      <div className="card" style={{ padding: 20, marginBottom: 24 }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
 
-        {MENU.map((group) => {
-          const isOpen = openGroups[group.group];
-          return (
-            <div key={group.group}>
-              {/* group header / toggle */}
-              <button
-                onClick={() => toggleGroup(group.group)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  width: "100%",
-                  padding: "9px 16px",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#334155",
-                  background: "transparent",
-                  border: 0,
-                  cursor: "pointer",
-                  textAlign: "left",
-                }}
-              >
-                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span>{group.icon}</span>
-                  {group.group}
-                </span>
-                {/* chevron */}
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                  stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round"
-                  style={{ transform: isOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </button>
-
-              {/* items */}
-              {isOpen && group.items.map((item) => {
-                const isActive = active === item.key;
-                return (
-                  <button
-                    key={item.key}
-                    onClick={() => handleSelect(item.key)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      width: "100%",
-                      padding: "8px 16px 8px 40px",
-                      fontSize: 13,
-                      fontWeight: isActive ? 600 : 400,
-                      color: isActive ? "#0284c7" : "#64748b",
-                      background: isActive ? "#e0f2fe" : "transparent",
-                      border: 0,
-                      borderRight: isActive ? "3px solid #0284c7" : "3px solid transparent",
-                      cursor: "pointer",
-                      textAlign: "left",
-                    }}
-                  >
-                    {/* dot indicator */}
-                    <span style={{
-                      width: 6, height: 6, borderRadius: "50%",
-                      background: isActive ? "#0284c7" : "#cbd5e1",
-                      marginRight: 10, flexShrink: 0,
-                    }} />
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
-          );
-        })}
-      </aside>
-
-      {/* ── Main panel ───────────────────────────────────────────────────── */}
-      <main style={{ flex: 1, overflowY: "auto", padding: 32 }}>
-        {/* breadcrumb */}
-        <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 4px" }}>
-          Reports › {activeGroup}
-        </p>
-        <PageHeader title={activeLabel} subtitle="Generate and view financial reports" />
-
-        {/* Filters */}
-        <div className="card" style={{ padding: 20, marginBottom: 24 }}>
-          <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
-
-            {isGSTTab(active) ? (
-              <>
-                <div>
-                  <label className="label">Month</label>
-                  <select className="input-field" style={{ width: 140 }} value={month}
-                    onChange={(e) => setMonth(parseInt(e.target.value))}>
-                    {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-                      .map((m, i) => <option key={i} value={i+1}>{m}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Year</label>
-                  <input type="number" className="input-field" style={{ width: 100 }}
-                    value={year} onChange={(e) => setYear(parseInt(e.target.value))} />
-                </div>
-              </>
-            ) : isAsOfOnly(active) ? (
+          {isGSTTab(active) ? (
+            <>
               <div>
-                <label className="label">As of Date</label>
+                <label className="label">Month</label>
+                <select className="input-field" style={{ width: 140 }} value={month}
+                  onChange={(e) => setMonth(parseInt(e.target.value))}>
+                  {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+                    .map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Year</label>
+                <input type="number" className="input-field" style={{ width: 100 }}
+                  value={year} onChange={(e) => setYear(parseInt(e.target.value))} />
+              </div>
+            </>
+          ) : isAsOfOnly(active) ? (
+            <div>
+              <label className="label">As of Date</label>
+              <input type="date" className="input-field" style={{ width: 160 }}
+                value={toDate} onChange={(e) => setToDate(e.target.value)} />
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="label">From Date</label>
+                <input type="date" className="input-field" style={{ width: 160 }}
+                  value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="label">To Date</label>
                 <input type="date" className="input-field" style={{ width: 160 }}
                   value={toDate} onChange={(e) => setToDate(e.target.value)} />
               </div>
-            ) : (
-              <>
-                <div>
-                  <label className="label">From Date</label>
-                  <input type="date" className="input-field" style={{ width: 160 }}
-                    value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-                </div>
-                <div>
-                  <label className="label">To Date</label>
-                  <input type="date" className="input-field" style={{ width: 160 }}
-                    value={toDate} onChange={(e) => setToDate(e.target.value)} />
-                </div>
-              </>
-            )}
+            </>
+          )}
 
-            {isLedger(active) && (
-  <div>
-    <label className="label">Account</label>  {/* ← add this */}
-    <select className="input-field" style={{ width: 260 }} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-      <option value="">— Select Account —</option>
-      {["asset","liability","equity","income","expense"].map((type) => {
-        const group = accounts.filter((a: any) => a.account_type === type);
-        if (!group.length) return null;
-        return (
-          <optgroup key={type} label={type.charAt(0).toUpperCase() + type.slice(1)}>
-            {group.map((a: any) => (
-              <option key={a.id} value={a.code}>
-                {a.code} — {a.name}
-              </option>
-            ))}
-          </optgroup>
-        );
-      })}
-    </select>
-  </div>
-)}
+          {isLedger(active) && (
+            <div>
+              <label className="label">Account</label>
+              <select className="input-field" style={{ width: 260 }} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+                <option value="">— Select Account —</option>
+                {["asset","liability","equity","income","expense"].map((type) => {
+                  const group = accounts.filter((a: any) => a.account_type === type);
+                  if (!group.length) return null;
+                  return (
+                    <optgroup key={type} label={type.charAt(0).toUpperCase() + type.slice(1)}>
+                      {group.map((a: any) => (
+                        <option key={a.id} value={a.code}>
+                          {a.code} — {a.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
+              </select>
+            </div>
+          )}
 
-            <button className="btn-primary" onClick={fetchReport} disabled={loading}>
-              {loading ? "Loading…" : "Generate"}
-            </button>
-          </div>
+          <button className="btn-primary" onClick={fetchReport} disabled={loading}>
+            {loading ? "Loading…" : "Generate"}
+          </button>
         </div>
+      </div>
 
-        {/* Report output */}
-        {data && (
-          <div className="card" style={{ padding: 24 }}>
-            {active === "pl"         && <PLReport         data={data} />}
-            {active === "tb"         && <TBReport         data={data} />}
-            {active === "bs"         && <BSReport         data={data} />}
-            {active === "cashbook"   && <CashBookReport   data={data} />}
-            {active === "daybook"    && <DayBookReport    data={data} />}
-            {active === "ledger"     && <LedgerReport     data={data} />}
-            {active === "stock"      && <StockReport      data={data} />}
-            {active === "stockvalue" && <StockValueReport data={data} />}
-            {active === "gstr1"      && <GSTR1Report      data={data} />}
-            {active === "gstr3b"     && <GSTR3BReport     data={data} />}
-          </div>
-        )}
-      </main>
+      {/* Report output */}
+      {data && (
+        <div className="card" style={{ padding: 24 }}>
+          {active === "pl"         && <PLReport         data={data} />}
+          {active === "tb"         && <TBReport         data={data} />}
+          {active === "bs"         && <BSReport         data={data} />}
+          {active === "cashbook"   && <CashBookReport   data={data} />}
+          {active === "daybook"    && <DayBookReport    data={data} />}
+          {active === "ledger"     && <LedgerReport     data={data} />}
+          {active === "stock"      && <StockReport      data={data} />}
+          {active === "stockvalue" && <StockValueReport data={data} />}
+          {active === "gstr1"      && <GSTR1Report      data={data} />}
+          {active === "gstr3b"     && <GSTR3BReport     data={data} />}
+        </div>
+      )}
     </div>
+  );
+}
+
+export default function ReportsPage() {
+  return (
+    <Suspense fallback={null}>
+      <ReportsPageInner />
+    </Suspense>
   );
 }
 
@@ -535,24 +446,21 @@ function StockReport({ data }: any) {
       ]} />
       <ReportTable
         headers={["Product", "SKU", "Attributes", "Opening", "Sold", "Returned", "Current Stock", "Low Threshold"]}
-        rows={(data.items ?? []).map((item: any) => {
-          const opening = item.current_stock + item.sold_qty - item.returned_qty;
-          return [
-            item.product_name,
-            item.sku,
-            item.attributes || "—",
-            opening,
-            item.sold_qty,
-            item.returned_qty,
-            <span key="cs" style={{
-              fontWeight: 600,
-              color: item.is_low_stock ? "#dc2626" : "#16a34a",
-            }}>
-              {item.current_stock}
-            </span>,
-            item.low_threshold,
-          ];
-        })}
+        rows={(data.items ?? []).map((item: any) => [
+          item.product,
+          item.sku,
+          item.attributes || "—",
+          item.opening,
+          item.outward,
+          item.inward,
+          <span key="cs" style={{
+            fontWeight: 600,
+            color: item.is_low_stock ? "#dc2626" : "#16a34a",
+          }}>
+            {item.closing}
+          </span>,
+          item.low_threshold,
+        ])}
       />
     </div>
   );

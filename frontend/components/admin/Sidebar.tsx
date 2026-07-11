@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { useStaffAuthStore } from "@/store/staffAuth";
 import { useRouter } from "next/navigation";
@@ -31,6 +31,40 @@ const subMenus: Record<string, { items: { label: string; href: string; icon: str
   pos:        { items: posItems,        activePrefix: "/admin/pos" },
 };
 
+// Reports has a second nesting level (group -> items), so it's handled separately
+// from subMenus. Each item links to /admin/reports?report=<key>, matching the
+// keys ReportsPage expects (pl, tb, bs, cashbook, daybook, ledger, stock, ...).
+const reportGroups: { group: string; icon: string; items: { key: string; label: string }[] }[] = [
+  {
+    group: "Accounting",
+    icon: "📊",
+    items: [
+      { key: "pl",       label: "Profit & Loss" },
+      { key: "tb",       label: "Trial Balance" },
+      { key: "bs",       label: "Balance Sheet" },
+      { key: "cashbook", label: "Cash Book"     },
+      { key: "daybook",  label: "Day Book"      },
+      { key: "ledger",   label: "Ledger"        },
+    ],
+  },
+  {
+    group: "Inventory",
+    icon: "📦",
+    items: [
+      { key: "stock",      label: "Stock Report"    },
+      { key: "stockvalue", label: "Stock Valuation" },
+    ],
+  },
+  {
+    group: "GST Returns",
+    icon: "🧾",
+    items: [
+      { key: "gstr1",  label: "GSTR-1"  },
+      { key: "gstr3b", label: "GSTR-3B" },
+    ],
+  },
+];
+
 const nav = [
   { key: "dashboard",  label: "Dashboard",  href: "/admin",           icon: "▦" },
   { key: "pos",        label: "POS Sale",   href: "/admin/pos",       icon: "🧾", expandable: true },
@@ -40,13 +74,14 @@ const nav = [
   { key: "vendors",    label: "Vendors",    href: "/admin/vendors",     icon: "🏭" },
   { key: "users",      label: "Users",      href: "/admin/users",       icon: "🔑" },
   { key: "accounting", label: "Accounting", href: "/admin/accounting", icon: "🧾", expandable: true },
-  { key: "reports",    label: "Reports",    href: "/admin/reports",    icon: "📊" },
+  { key: "reports",    label: "Reports",    href: "/admin/reports",    icon: "📊", expandable: true },
   { key: "coupons",    label: "Coupons",    href: "/admin/coupons",    icon: "🏷️" },
   { key: "settings",   label: "Settings",   href: "/admin/settings",   icon: "⚙️" },
 ];
 
 export default function AdminSidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { user: customerUser, logout: customerLogout } = useAuthStore();
   const { user: staffUser, menus: staffMenus, logout: staffLogout } = useStaffAuthStore();
   const router = useRouter();
@@ -61,8 +96,16 @@ export default function AdminSidebar() {
   const displayName = customerUser?.name || staffUser?.name || "";
   const displayRole = isCustomerAdmin ? "Administrator" : (staffUser?.role || "");
 
-  // openMenus tracks expand/collapse state per expandable nav key (accounting, pos, ...)
+  // openMenus tracks expand/collapse state per expandable nav key (accounting, pos, reports, ...)
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({});
+  // openReportGroups tracks expand/collapse per report group (Accounting, Inventory, GST Returns)
+  const [openReportGroups, setOpenReportGroups] = useState<Record<string, boolean>>(
+    Object.fromEntries(reportGroups.map((g) => [g.group, true]))
+  );
+
+  const activeReportKey = pathname.startsWith("/admin/reports")
+    ? (searchParams.get("report") || "pl")
+    : null;
 
   useEffect(() => {
     // Auto-expand whichever expandable section matches the current path
@@ -70,13 +113,27 @@ export default function AdminSidebar() {
     for (const key of Object.keys(subMenus)) {
       if (pathname.startsWith(subMenus[key].activePrefix)) updates[key] = true;
     }
+    if (pathname.startsWith("/admin/reports")) updates["reports"] = true;
     if (Object.keys(updates).length) {
       setOpenMenus((prev) => ({ ...prev, ...updates }));
     }
   }, [pathname]);
 
+  useEffect(() => {
+    // Auto-expand whichever report group contains the active report
+    if (!activeReportKey) return;
+    const group = reportGroups.find((g) => g.items.some((i) => i.key === activeReportKey));
+    if (group) {
+      setOpenReportGroups((prev) => ({ ...prev, [group.group]: true }));
+    }
+  }, [activeReportKey]);
+
   const toggleMenu = (key: string) => {
     setOpenMenus((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleReportGroup = (group: string) => {
+    setOpenReportGroups((prev) => ({ ...prev, [group]: !prev[group] }));
   };
 
   const handleLogout = () => {
@@ -119,6 +176,102 @@ export default function AdminSidebar() {
       <nav style={{ flex: 1, padding: "12px 10px", overflowY: "auto" }}>
         {visibleNav.map((item) => {
           const active = pathname === item.href || (item.href !== "/admin" && pathname.startsWith(item.href));
+
+          if (item.key === "reports" && item.expandable) {
+            const isOpen = !!openMenus.reports;
+            return (
+              <div key={item.key}>
+                <div
+                  onClick={() => toggleMenu("reports")}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "9px 12px", borderRadius: 8, marginBottom: 2,
+                    fontSize: 14, fontWeight: active ? 500 : 400,
+                    color: active ? "#0284c7" : "#475569",
+                    background: active ? "#eff6ff" : "transparent",
+                    cursor: "pointer", transition: "all 0.15s",
+                    userSelect: "none",
+                  }}
+                  onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "#f8fafc"; }}
+                  onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 16 }}>{item.icon}</span>
+                    {item.label}
+                  </div>
+                  <span style={{
+                    fontSize: 10, color: "#94a3b8",
+                    transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.2s",
+                    display: "inline-block",
+                  }}>▼</span>
+                </div>
+
+                {isOpen && (
+                  <div style={{
+                    marginLeft: 12,
+                    borderLeft: "2px solid #e2e8f0",
+                    paddingLeft: 8,
+                    marginBottom: 4,
+                    overflow: "hidden",
+                  }}>
+                    {reportGroups.map((group) => {
+                      const groupOpen = !!openReportGroups[group.group];
+                      return (
+                        <div key={group.group}>
+                          <div
+                            onClick={() => toggleReportGroup(group.group)}
+                            style={{
+                              display: "flex", alignItems: "center", justifyContent: "space-between",
+                              padding: "6px 10px", borderRadius: 6, marginBottom: 1,
+                              fontSize: 12, fontWeight: 600, color: "#64748b",
+                              cursor: "pointer", userSelect: "none",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontSize: 13 }}>{group.icon}</span>
+                              {group.group}
+                            </div>
+                            <span style={{
+                              fontSize: 9, color: "#94a3b8",
+                              transform: groupOpen ? "rotate(180deg)" : "rotate(0deg)",
+                              transition: "transform 0.2s",
+                              display: "inline-block",
+                            }}>▼</span>
+                          </div>
+
+                          {groupOpen && group.items.map((r) => {
+                            const subActive = activeReportKey === r.key;
+                            return (
+                              <Link key={r.key} href={`/admin/reports?report=${r.key}`} style={{ textDecoration: "none" }}>
+                                <div style={{
+                                  display: "flex", alignItems: "center", gap: 8,
+                                  padding: "7px 10px 7px 20px", borderRadius: 6, marginBottom: 1,
+                                  fontSize: 13,
+                                  fontWeight: subActive ? 600 : 400,
+                                  color: subActive ? "#0284c7" : "#64748b",
+                                  background: subActive ? "#eff6ff" : "transparent",
+                                  transition: "all 0.1s",
+                                  borderLeft: subActive ? "2px solid #0284c7" : "2px solid transparent",
+                                }}
+                                  onMouseEnter={(e) => { if (!subActive) e.currentTarget.style.background = "#f8fafc"; }}
+                                  onMouseLeave={(e) => { if (!subActive) e.currentTarget.style.background = "transparent"; }}
+                                >
+                                  <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                    {r.label}
+                                  </span>
+                                </div>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          }
 
           if (item.expandable) {
             const sub = subMenus[item.key];

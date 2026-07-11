@@ -4,6 +4,8 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.api.v1 import router as api_router
 import os
+from app import backup as backup_router
+from app.scheduler import start_scheduler, stop_scheduler
 
 app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION,
               docs_url="/api/docs", redoc_url="/api/redoc")
@@ -15,6 +17,7 @@ app.add_middleware(CORSMiddleware,
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 app.include_router(api_router, prefix="/api/v1")
+app.include_router(backup_router.router, prefix="/api/v1/settings", tags=["backup"])
 
 
 @app.on_event("startup")
@@ -33,3 +36,12 @@ async def startup_event():
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "app": settings.APP_NAME}
+
+
+@app.on_event("startup")
+async def on_startup():
+    start_scheduler()
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    stop_scheduler()

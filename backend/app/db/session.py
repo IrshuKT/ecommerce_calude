@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
+from sqlalchemy.ext.asyncio import AsyncSession
 
 engine = create_async_engine(
     settings.DATABASE_URL,
@@ -27,8 +28,16 @@ async def get_db() -> AsyncSession:
         try:
             yield session
             await session.commit()
-        except Exception:
-            await session.rollback()
+        except Exception as e:
+            try:
+                await session.rollback()
+            except Exception:
+                pass
+            if "ConnectionDoesNotExistError" in str(type(e)) or "connection was closed" in str(e):
+                return  # swallow — likely our own intentional termination during restore
             raise
         finally:
-            await session.close()
+            try:
+                await session.close()
+            except Exception:
+                pass

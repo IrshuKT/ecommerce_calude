@@ -20,6 +20,7 @@ router.include_router(admin.router,          prefix="/admin",            tags=["
 router.include_router(stock_transactions.router, prefix="/products", tags=["Stock Transactions"])
 router.include_router(pos_endpoint.router, prefix="/pos", tags=["POS Sale"])
 
+
 # ── Accounting ──────────────────────────
 router.include_router(settings.router,     prefix="/settings",        tags=["Company Settings"])
 router.include_router(images.router,       prefix="/products",        tags=["Product Images"])
