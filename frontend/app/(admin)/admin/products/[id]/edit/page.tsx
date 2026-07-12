@@ -19,6 +19,7 @@ interface Variant {
   stock_qty: string;
   weight_kg: string;
   is_active?: boolean;
+  image_url?: string;
 }
 interface ProductImage {
   id: number;
@@ -93,6 +94,7 @@ export default function ProductEditPage() {
         stock_qty: String(v.stock_qty ?? 0),
         weight_kg: v.weight_kg != null ? String(v.weight_kg) : "",
         is_active: v.is_active !== false,
+        image_url: v.image_url || "",
       }));
       setVariants(vList);
 
@@ -143,6 +145,29 @@ export default function ProductEditPage() {
     setIsSimple(false);
   } else {
     setVariants([...variants, { sku: `${prefix}-${nextNum}`, selected_attributes: {}, price: "", trade_price: "", cost_price: "", compare_price: "", stock_qty: "0", weight_kg: "", is_active: true }]);
+  }
+};
+
+const [uploadingVariantId, setUploadingVariantId] = useState<number | null>(null);
+
+const uploadVariantImage = async (index: number, file: File) => {
+  const variant = variants[index];
+  if (!variant.id) {
+    alert("Save the product first before adding a variant image (this variant hasn't been saved yet).");
+    return;
+  }
+  setUploadingVariantId(variant.id);
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await api.post(`/products/variants/${variant.id}/image`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    updateVariant(index, "image_url", res.data.image_url);
+  } catch (e: any) {
+    alert(e.response?.data?.detail || "Failed to upload variant image");
+  } finally {
+    setUploadingVariantId(null);
   }
 };
 
@@ -540,7 +565,7 @@ export default function ProductEditPage() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
             <div>
               <label style={lbl}>Retail Price ₹ *</label>
-              <input type="number" style={{ ...inp, borderColor: simplePrice ? "#e2e8f0" : "#fca5a5" }} placeholder="0.00" value={simplePrice} onChange={e => setSimplePrice(e.target.value)} />
+              <input type="number" style={{ ...inp, border: simplePrice ? "1px solid #e2e8f0" : "1px solid #fca5a5" }} placeholder="0.00" value={simplePrice} onChange={e => setSimplePrice(e.target.value)} />
               <p style={{ fontSize: 11, color: "#94a3b8", margin: "4px 0 0" }}>Public / regular customer price</p>
             </div>
             <div>
@@ -558,6 +583,26 @@ export default function ProductEditPage() {
               <input type="number" style={inp} placeholder="0" value={simpleStock} onChange={e => setSimpleStock(e.target.value)} />
             </div>
           </div>
+            <div style={{ marginTop: 18 }}>
+      <label style={lbl}>Variant Image</label>
+      <label style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 12 }}>
+        {variants[0]?.image_url ? (
+          <img src={`${API_BASE}${variants[0].image_url}`} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, border: "1px solid #e2e8f0" }} />
+        ) : (
+          <div style={{ width: 64, height: 64, borderRadius: 8, border: "1px dashed #cbd5e1", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: "#cbd5e1" }}>
+            {uploadingVariantId === variants[0]?.id ? "…" : "📷"}
+          </div>
+        )}
+        <span style={{ fontSize: 13, color: "#0284c7" }}>
+          {variants[0]?.image_url ? "Change image" : "Upload image"}
+        </span>
+        <input
+          type="file" accept="image/*" style={{ display: "none" }}
+          disabled={uploadingVariantId === variants[0]?.id}
+          onChange={e => { const f = e.target.files?.[0]; if (f) uploadVariantImage(0, f); e.target.value = ""; }}
+        />
+      </label>
+    </div>
         </div>
       )}
       {isSimple && (
@@ -596,12 +641,12 @@ export default function ProductEditPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
-                  {["Variant", "SKU", "Cost ₹", "Retail ₹ *", "Trade ₹", "MRP ₹", "Stock", "Active"].map((h, i) => (
-                    <th key={h} style={{
-                      textAlign: "left", padding: "8px", color: "#64748b", fontWeight: 600, fontSize: 12,
-                      background: i === 3 ? "#fef9c3" : i === 4 ? "#d1fae5" : "transparent",
-                    }}>{h}</th>
-                  ))}
+                  {["Variant", "Image", "SKU", "Cost ₹", "Retail ₹ *", "Trade ₹", "MRP ₹", "Stock", "Active"].map((h, i) => (
+  <th key={h} style={{
+    textAlign: "left", padding: "8px", color: "#64748b", fontWeight: 600, fontSize: 12,
+    background: i === 4 ? "#fef9c3" : i === 5 ? "#d1fae5" : "transparent",   // ← shifted indices by 1 for the new column
+  }}>{h}</th>
+))}
                 </tr>
               </thead>
               <tbody>
@@ -618,13 +663,29 @@ export default function ProductEditPage() {
                       </div>
                     </td>
                     <td style={{ padding: "6px" }}>
+  <label style={{ cursor: "pointer", display: "block", position: "relative" }}>
+    {v.image_url ? (
+      <img src={`${API_BASE}${v.image_url}`} style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 6, border: "1px solid #e2e8f0" }} />
+    ) : (
+      <div style={{ width: 40, height: 40, borderRadius: 6, border: "1px dashed #cbd5e1", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, color: "#cbd5e1" }}>
+        {uploadingVariantId === v.id ? "…" : "📷"}
+      </div>
+    )}
+    <input
+      type="file" accept="image/*" style={{ display: "none" }}
+      disabled={uploadingVariantId === v.id}
+      onChange={e => { const f = e.target.files?.[0]; if (f) uploadVariantImage(i, f); e.target.value = ""; }}
+    />
+  </label>
+</td>
+                    <td style={{ padding: "6px" }}>
                       <input style={{ ...inp, width: 140, padding: "6px 8px", fontSize: 12 }} value={v.sku} onChange={e => updateVariant(i, "sku", e.target.value)} />
                     </td>
                     <td style={{ padding: "6px" }}>
                       <input type="number" style={{ ...inp, width: 85, padding: "6px 8px" }} placeholder="0.00" value={v.cost_price} onChange={e => updateVariant(i, "cost_price", e.target.value)} />
                     </td>
                     <td style={{ padding: "6px", background: "#fefce8" }}>
-                      <input type="number" style={{ ...inp, width: 85, padding: "6px 8px", borderColor: v.price ? "#e2e8f0" : "#fca5a5" }} placeholder="0.00 *" value={v.price} onChange={e => updateVariant(i, "price", e.target.value)} />
+                      <input type="number" style={{ ...inp, width: 85, padding: "6px 8px", border: v.price ? "1px solid #e2e8f0" : "1px solid #fca5a5" }} placeholder="0.00 *" value={v.price} onChange={e => updateVariant(i, "price", e.target.value)} />
                     </td>
                     <td style={{ padding: "6px", background: "#f0fdf4" }}>
                       <input type="number" style={{ ...inp, width: 85, padding: "6px 8px" }} placeholder="0.00" value={v.trade_price} onChange={e => updateVariant(i, "trade_price", e.target.value)} />

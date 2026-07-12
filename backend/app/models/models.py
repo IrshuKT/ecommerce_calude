@@ -180,6 +180,7 @@ class ProductVariant(Base):
     low_stock_threshold: Mapped[int] = mapped_column(Integer, default=5)
     track_inventory: Mapped[bool] = mapped_column(Boolean, default=True)
     weight_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 3))
+    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     product: Mapped["Product"] = relationship("Product", back_populates="variants")
     cart_items: Mapped[List["CartItem"]] = relationship("CartItem", back_populates="variant")

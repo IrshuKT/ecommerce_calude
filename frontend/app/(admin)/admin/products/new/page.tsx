@@ -15,6 +15,8 @@ interface Variant {
   compare_price: string;
   stock_qty: string;
   weight_kg: string;
+  imageFile?: File | null;
+  imagePreview?: string;
 }
 
 export default function AddProductPage() {
@@ -72,12 +74,20 @@ export default function AddProductPage() {
 
     const prefix = info.name.toUpperCase().replace(/\s+/g, "-").slice(0, 6) || "PROD";
     setVariants(validCombos.map((combo, i) => ({
-      sku: `${prefix}-${Object.values(combo).join("-").toUpperCase().replace(/\s+/g, "").replace(/"/g, "IN")}-${String(i + 1).padStart(3, "0")}`,
-      selected_attributes: combo,
-      price: "", trade_price: "", cost_price: "", compare_price: "",
-      stock_qty: "0", weight_kg: "",
-    })));
+  sku: `${prefix}-${Object.values(combo).join("-").toUpperCase().replace(/\s+/g, "").replace(/"/g, "IN")}-${String(i + 1).padStart(3, "0")}`,
+  selected_attributes: combo,
+  price: "", trade_price: "", cost_price: "", compare_price: "",
+  stock_qty: "0", weight_kg: "",
+  imageFile: null, imagePreview: "",
+})));
   };
+
+  const setVariantImage = (i: number, file: File | null) => {
+  const v = [...variants];
+  v[i].imageFile = file;
+  v[i].imagePreview = file ? URL.createObjectURL(file) : "";
+  setVariants(v);
+};
 
   const updateVariant = (i: number, key: keyof Variant, val: string) => { const v = [...variants]; (v[i] as any)[key] = val; setVariants(v); };
 
@@ -300,7 +310,7 @@ export default function AddProductPage() {
           <div style={{ overflowX: "auto" as const }}>
             <table style={{ width: "100%", borderCollapse: "collapse" as const, fontSize: 12 }}>
               <thead><tr style={{ borderBottom: "1px solid #e2e8f0" }}>
-                {["Variant", "SKU", "Cost ₹", "Retail ₹ *", "Trade ₹", "MRP ₹", ...(isService ? [] : ["Stock"])].map((h, i) => (
+                {["Variant","Image", "SKU", "Cost ₹", "Retail ₹ *", "Trade ₹", "MRP ₹", ...(isService ? [] : ["Stock"])].map((h, i) => (
                   <th key={h} style={{ textAlign: "left" as const, padding: "6px 6px", color: "#64748b", fontWeight: 600, background: i === 3 ? "#fef9c3" : i === 4 ? "#d1fae5" : "transparent" }}>{h}</th>
                 ))}
               </tr></thead>
@@ -314,6 +324,15 @@ export default function AddProductPage() {
                         ))}
                       </div>
                     </td>
+                    <td style={{ padding: "4px" }}>
+  <label style={{ cursor: "pointer", display: "block" }}>
+    {v.imagePreview
+      ? <img src={v.imagePreview} style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 5, border: "1px solid #e2e8f0" }} />
+      : <div style={{ width: 36, height: 36, borderRadius: 5, border: "1px dashed #cbd5e1", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#cbd5e1" }}>📷</div>}
+    <input type="file" accept="image/*" style={{ display: "none" }}
+      onChange={e => setVariantImage(i, e.target.files?.[0] || null)} />
+  </label>
+</td>
                     <td style={{ padding: "4px" }}><input style={{ ...inp, width: 120, padding: "5px 7px", fontSize: 11 }} value={v.sku} onChange={e => updateVariant(i, "sku", e.target.value)} /></td>
                     <td style={{ padding: "4px" }}><input type="number" style={{ ...inp, width: 72, padding: "5px 7px" }} placeholder="0.00" value={v.cost_price} onChange={e => updateVariant(i, "cost_price", e.target.value)} /></td>
                     <td style={{ padding: "4px", background: "#fefce8" }}><input type="number" style={{ ...inp, width: 72, padding: "5px 7px", borderColor: v.price ? "#e2e8f0" : "#fca5a5" }} placeholder="0.00*" value={v.price} onChange={e => updateVariant(i, "price", e.target.value)} /></td>

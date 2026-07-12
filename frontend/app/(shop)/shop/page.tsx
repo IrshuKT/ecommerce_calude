@@ -14,6 +14,7 @@ interface Variant {
   selected_attributes?: Record<string, string>;
   retail_price?: string | number;
   stock_qty?: number;
+  image_url?: string;
 }
 
 function BuyModal({ product, variant, onClose }: { product: any; variant: Variant; onClose: () => void }) {
@@ -56,10 +57,10 @@ function BuyModal({ product, variant, onClose }: { product: any; variant: Varian
         style={{ background: "white", borderRadius: 14, width: 340, overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.25)" }}
       >
         <div style={{ height: 200, background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-          {product.primary_image
-            ? <img src={`${API_BASE}${product.primary_image}`} alt={product.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            : <span style={{ fontSize: 56 }}>🪟</span>}
-        </div>
+  {variant.image_url || product.primary_image
+    ? <img src={`${API_BASE}${variant.image_url || product.primary_image}`} alt={product.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+    : <span style={{ fontSize: 56 }}>🪟</span>}
+</div>
 
         <div style={{ padding: 18 }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: "#1e293b", margin: "0 0 2px" }}>{product.name}</h3>
@@ -167,6 +168,8 @@ function ProductCard({ product }: { product: any }) {
                       boxShadow: "0 8px 24px rgba(0,0,0,0.12)", minWidth: 220, padding: 8,
                     }}
                   >
+
+                    
                     {variants.map(v => {
                       const outOfStock = v.stock_qty != null && v.stock_qty <= 0;
                       return (
@@ -180,7 +183,12 @@ function ProductCard({ product }: { product: any }) {
                           onMouseEnter={e => { if (!outOfStock) (e.currentTarget as HTMLElement).style.background = "#f8fafc"; }}
                           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "none"; }}
                         >
-                          <span>{Object.values(v.selected_attributes || {}).join(" / ") || v.sku}</span>
+                          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+  {v.image_url && (
+    <img src={`${API_BASE}${v.image_url}`} style={{ width: 24, height: 24, objectFit: "cover", borderRadius: 4 }} />
+  )}
+  {Object.values(v.selected_attributes || {}).join(" / ") || v.sku}
+</span>
                           <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
                             {v.retail_price != null && (
                               <span style={{ color: "#0284c7", fontWeight: 600 }}>
@@ -195,6 +203,7 @@ function ProductCard({ product }: { product: any }) {
                       );
                     })}
                   </div>
+                  
                 )}
               </div>
             )}

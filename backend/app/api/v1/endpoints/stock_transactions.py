@@ -12,8 +12,8 @@ from typing import Optional, List
 import enum
 
 from app.db.session import get_db
-from app.models.models import ProductVariant, Product, User, StockTransaction
-from app.api.v1.endpoints.auth import get_admin_user
+from app.models.models import ProductVariant, Product, InternalUser, StockTransaction
+from app.api.v1.endpoints.shared_auth import get_acting_staff_user, ActingUser
 
 
 router = APIRouter()
@@ -37,7 +37,7 @@ async def list_stock_transactions(
     page: int = Query(1, ge=1),
     limit: int = Query(30, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(get_acting_staff_user),
 ):
     """List all stock transactions for a product, optionally filtered by variant or type."""
     prod = await db.execute(
@@ -96,7 +96,7 @@ async def create_stock_transaction(
     product_id: int,
     payload: StockTxnIn,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(get_acting_staff_user),
 ):
     if payload.txn_type not in ("in", "out", "adjustment"):
         raise HTTPException(400, "txn_type must be 'in', 'out', or 'adjustment'")
@@ -135,6 +135,12 @@ async def create_stock_transaction(
         qty_delta = qty_after - qty_before
 
     variant.stock_qty = qty_after
+    note = payload.note or ""
+    if current_user.is_customer_admin:
+        note = f"{note} (by {current_user.name})".strip()
+        created_by_id = None
+    else:
+        created_by_id = current_user.id
 
     txn = StockTransaction(
         variant_id=variant.id,
@@ -144,8 +150,8 @@ async def create_stock_transaction(
         qty_after=qty_after,
         reference_type=payload.reference_type,
         reference_id=payload.reference_id,
-        note=payload.note,
-        created_by_id=current_user.id,
+        note=note,
+        created_by_id=created_by_id,
     )
     db.add(txn)
     await db.commit()

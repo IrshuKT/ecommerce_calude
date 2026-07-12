@@ -1,3 +1,6 @@
+import os
+import uuid
+from fastapi import UploadFile, File
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -8,11 +11,13 @@ from decimal import Decimal
 from app.api.v1.endpoints.shared_auth import get_acting_staff_user, ActingUser
 from app.db.session import get_db
 from app.models.models import Product, ProductVariant, ProductAttribute, ProductAttributeValue, ProductImage, Category, User
-from app.api.v1.endpoints.auth import get_current_user, get_admin_user
+from app.api.v1.endpoints.shared_auth import get_acting_staff_user, ActingUser
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 from app.core.security import decode_token
 import traceback
+
+from app.api.v1.endpoints.auth import get_admin_user
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
@@ -37,7 +42,7 @@ def effective_price(variant, user):
 @router.get("/admin/ids")
 async def list_product_ids(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(get_acting_staff_user),
 ):
     result = await db.execute(select(Product.id).order_by(Product.id))
     ids = result.scalars().all()
@@ -47,7 +52,7 @@ async def list_product_ids(
 @router.get("/")
 async def list_products(
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: Optional[ActingUser] = Depends(get_optional_user),
     category_slug: Optional[str] = None,
     search: Optional[str] = None,
     include_inactive :bool =Query(False),
@@ -111,7 +116,7 @@ async def list_products(
 @router.get("/admin/")
 async def list_products_admin(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(get_acting_staff_user),
     search: Optional[str] = None,
     include_inactive: bool = Query(False),
     limit: int = Query(50, le=200),
@@ -145,7 +150,7 @@ async def list_products_admin(
             "is_featured": p.is_featured,
             "primary_image": primary_image,
             "min_price": str(min_price) if min_price else None,
-            "variants": [{"id": v.id, "sku": v.sku, "stock_qty": v.stock_qty, "is_active": v.is_active, "retail_price": str(v.retail_price) if v.retail_price else None, "selected_attributes": v.selected_attributes} for v in p.variants],
+            "variants": [{"id": v.id, "sku": v.sku, "stock_qty": v.stock_qty, "is_active": v.is_active, "retail_price": str(v.retail_price) if v.retail_price else None, "selected_attributes": v.selected_attributes, "image_url": v.image_url} for v in p.variants],
         })
     return {"items": items, "total": len(items)}
 
@@ -187,6 +192,7 @@ async def get_product(
             "width_ft": v.width_ft, "height_ft": v.height_ft,
             "stock_qty": v.stock_qty,
             "is_trade_price": is_trade and v.trade_price is not None,
+            "image_url": v.image_url,
         })
 
     return {
@@ -249,7 +255,7 @@ class CreateProductIn(BaseModel):
 async def create_product(
     payload: CreateProductIn,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+     current_user: ActingUser = Depends(get_acting_staff_user),
 ):
 
     from slugify import slugify
@@ -320,7 +326,7 @@ async def update_product(
     product_id: int,
     payload: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+     current_user: ActingUser = Depends(get_acting_staff_user),
 ):
     result = await db.execute(
         select(Product).options(selectinload(Product.variants))
@@ -377,7 +383,7 @@ async def update_product(
 async def delete_product(
     product_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(get_acting_staff_user),
 ):
     result = await db.execute(select(Product).where(Product.id == product_id))
     product = result.scalar_one_or_none()
@@ -390,7 +396,7 @@ async def delete_product(
 async def get_product_admin(
     product_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(get_acting_staff_user),
 ):
     result = await db.execute(
         select(Product)
@@ -452,6 +458,7 @@ async def get_product_admin(
             "compare_price": float(v.compare_price or 0),
             "stock_qty": v.stock_qty,
             "weight_kg": float(v.weight_kg) if v.weight_kg else None,
+            "image_url": v.image_url,
         }
         for v in product.variants
     ]
@@ -481,7 +488,7 @@ async def search_variants(q: str, limit: int = 8, db=Depends(get_db)):
 async def get_product_avg_cost(
     product_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(get_acting_staff_user),
 ):
     """
     Calculate weighted average cost per variant from received purchases.
@@ -606,3 +613,29 @@ async def staff_product_picker(
             primary_image=primary,
         ))
     return out
+
+
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
+
+@router.post("/variants/{variant_id}/image")
+async def upload_variant_image(
+    variant_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: ActingUser = Depends(get_acting_staff_user),
+):
+    result = await db.execute(select(ProductVariant).where(ProductVariant.id == variant_id))
+    variant = result.scalar_one_or_none()
+    if not variant:
+        raise HTTPException(status_code=404, detail="Variant not found")
+
+    os.makedirs(os.path.join(UPLOAD_DIR, "variants"), exist_ok=True)
+    ext = os.path.splitext(file.filename)[1] or ".jpg"
+    filename = f"{uuid.uuid4().hex}{ext}"
+    filepath = os.path.join(UPLOAD_DIR, "variants", filename)
+    with open(filepath, "wb") as f:
+        f.write(await file.read())
+
+    variant.image_url = f"/uploads/variants/{filename}"
+    await db.commit()
+    return {"image_url": variant.image_url}
