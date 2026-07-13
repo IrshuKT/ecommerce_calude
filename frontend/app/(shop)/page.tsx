@@ -373,7 +373,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Trade CTA */}
+      {/* Trade CTA
       {!user?.is_trade_approved && (
         <section style={{ background: "#0284c7", padding: "48px 24px", textAlign: "center" }}>
           <div style={{ maxWidth: 600, margin: "0 auto" }}>
@@ -386,7 +386,7 @@ export default function HomePage() {
             </Link>
           </div>
         </section>
-      )}
+      )}  */}
     </div>
   );
 }

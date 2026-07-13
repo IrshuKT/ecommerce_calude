@@ -66,23 +66,22 @@ export default function ProductDetailPage() {
     return price;
   };
 
-  const handleAddToCart = () => {
+ const handleAddToCart = async () => {
     if (!selectedVariant) return;
-    const price = parseFloat(selectedVariant.price);
-    addItem({
-      variant_id: selectedVariant.id,
-      product_name: product.name,
-      sku: selectedVariant.sku,
-      selected_attributes: selectedVariant.selected_attributes || {},
-      price,
-      quantity,
-      primary_image: product.images?.[0]?.url,
-      custom_width_ft: customWidth ? parseFloat(customWidth) : undefined,
-      custom_height_ft: customHeight ? parseFloat(customHeight) : undefined,
-      price_type: product.price_type,
-    });
-    setAdded(true);
-    setTimeout(() => setAdded(false), 2000);
+    try {
+      await addItem(
+        selectedVariant.id,
+        quantity,
+        {
+          custom_width_ft: customWidth ? parseFloat(customWidth) : undefined,
+          custom_height_ft: customHeight ? parseFloat(customHeight) : undefined,
+        }
+      );
+      setAdded(true);
+      setTimeout(() => setAdded(false), 2000);
+    } catch {
+      alert("Failed to add to cart");
+    }
   };
 
   const inp = { padding: "9px 12px", borderRadius: 7, border: "1px solid #e2e8f0", fontSize: 14, fontFamily: "inherit", outline: "none" };

@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import Link from "next/link";
 import PageHeader from "@/components/admin/PageHeader";
 
@@ -24,6 +24,8 @@ const MENU = [
     items: [
       { key: "stock",      label: "Stock Report"    },
       { key: "stockvalue", label: "Stock Valuation" },
+      { key: "fastmoving",  label: "Fast Moving Products" },
+    { key: "profitable",  label: "Profitable Products"  },
     ],
   },
   {
@@ -67,7 +69,7 @@ function ReportsPageInner() {
   }, [active]);
 
   useEffect(() => {
-    api.get("/accounting/accounts")
+    staffApi.get("/accounting/accounts")
       .then((r) => {
         console.log("accounts:", r.data); // ← check browser console
         setAccounts(r.data?.accounts ?? []);
@@ -84,16 +86,18 @@ function ReportsPageInner() {
       const gst    = `month=${month}&year=${year}`;
       let res;
 
-      if      (active === "pl")         res = await api.get(`/reports/profit-loss?${params}`);
-      else if (active === "tb")         res = await api.get(`/reports/trial-balance?${asOf}`);
-      else if (active === "bs")         res = await api.get(`/reports/balance-sheet?${asOf}`);
-      else if (active === "cashbook")   res = await api.get(`/reports/cash-book?${params}`);
-      else if (active === "daybook")    res = await api.get(`/reports/day-book?${params}`);
-      else if (active === "ledger") res = await api.get(`/reports/ledger?account_code=${accountId}&${params}`);
-      else if (active === "stock")      res = await api.get(`/reports/stock?${params}`);
-      else if (active === "stockvalue") res = await api.get(`/reports/stock-value?${asOf}`);
-      else if (active === "gstr1")      res = await api.get(`/gst/gstr1?${gst}`);
-      else if (active === "gstr3b")     res = await api.get(`/gst/gstr3b?${gst}`);
+      if      (active === "pl")         res = await staffApi.get(`/reports/profit-loss?${params}`);
+      else if (active === "tb")         res = await staffApi.get(`/reports/trial-balance?${asOf}`);
+      else if (active === "bs")         res = await staffApi.get(`/reports/balance-sheet?${asOf}`);
+      else if (active === "cashbook")   res = await staffApi.get(`/reports/cash-book?${params}`);
+      else if (active === "daybook")    res = await staffApi.get(`/reports/day-book?${params}`);
+      else if (active === "ledger") res = await staffApi.get(`/reports/ledger?account_code=${accountId}&${params}`);
+      else if (active === "stock")      res = await staffApi.get(`/reports/stock?${params}`);
+      else if (active === "stockvalue") res = await staffApi.get(`/reports/stock-value?${asOf}`);
+      else if (active === "fastmoving") res = await staffApi.get(`/reports/fast-moving?${params}`);
+      else if (active === "profitable") res = await staffApi.get(`/reports/profitable?${params}`);
+      else if (active === "gstr1")      res = await staffApi.get(`/gst/gstr1?${gst}`);
+      else if (active === "gstr3b")     res = await staffApi.get(`/gst/gstr3b?${gst}`);
 
       setData(res?.data);
     } catch (e: any) {
@@ -196,6 +200,8 @@ function ReportsPageInner() {
           {active === "ledger"     && <LedgerReport     data={data} />}
           {active === "stock"      && <StockReport      data={data} />}
           {active === "stockvalue" && <StockValueReport data={data} />}
+          {active === "fastmoving" && <FastMovingReport data={data} />}
+          {active === "profitable" && <ProfitableReport data={data} />}
           {active === "gstr1"      && <GSTR1Report      data={data} />}
           {active === "gstr3b"     && <GSTR3BReport     data={data} />}
         </div>
@@ -487,6 +493,57 @@ function StockValueReport({ data }: any) {
           fmt(item.value),
         ])}
         footer={["", "", "", "", "", "Total", fmt(data.total_value)]}
+      />
+    </div>
+  );
+}
+function FastMovingReport({ data }: any) {
+  return (
+    <div>
+      <ReportTitle title="Fast Moving Products" sub={`${data.from_date} to ${data.to_date}`} />
+      <SummaryCards cards={[
+        { label: "Products Ranked", value: data.items?.length ?? 0 },
+      ]} />
+      <ReportTable
+        headers={["Product", "SKU", "Attributes", "Qty Sold", "Web", "POS", "Current Stock"]}
+        rows={(data.items ?? []).map((item: any) => [
+          item.product,
+          item.sku,
+          item.attributes || "—",
+          <span key="qty" style={{ fontWeight: 700, color: "#16a34a" }}>{item.qty_sold}</span>,
+          item.web_qty,
+          item.pos_qty,
+          item.current_stock,
+        ])}
+      />
+    </div>
+  );
+}
+
+function ProfitableReport({ data }: any) {
+  return (
+    <div>
+      <ReportTitle title="Most Profitable Products" sub={`${data.from_date} to ${data.to_date}`} />
+      <SummaryCards cards={[
+        { label: "Products Ranked", value: data.items?.length ?? 0 },
+      ]} />
+      <ReportTable
+        headers={["Product", "SKU", "Attributes", "Qty Sold", "Revenue", "Cost", "Profit", "Margin %"]}
+        rows={(data.items ?? []).map((item: any) => [
+          item.product,
+          item.sku,
+          item.attributes || "—",
+          item.qty_sold,
+          fmt(item.revenue),
+          fmt(item.cost),
+          <span key="profit" style={{
+            fontWeight: 700,
+            color: item.profit >= 0 ? "#16a34a" : "#dc2626",
+          }}>
+            {fmt(item.profit)}
+          </span>,
+          item.margin_pct !== null ? `${item.margin_pct}%` : "—",
+        ])}
       />
     </div>
   );

@@ -18,7 +18,7 @@ from app.models.accounting import (
     PurchaseStatus, ReturnStatus, VendorStatus
 )
 from app.models.models import User
-from app.api.v1.endpoints.auth import get_admin_user, get_current_user
+from app.api.v1.endpoints.shared_auth import require_roles, ActingUser
 from app.services.journal_service import (
     post_purchase_journal, post_purchase_return_journal,
     post_receipt_journal, post_payment_journal,
@@ -53,7 +53,7 @@ class VendorIn(BaseModel):
 @vendors_router.get("/")
 async def list_vendors(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
     search: Optional[str] = None,
 ):
     query = select(Vendor).where(Vendor.status == VendorStatus.active).order_by(Vendor.name)
@@ -67,7 +67,7 @@ async def list_vendors(
 async def create_vendor(
     payload: VendorIn,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     existing = await db.execute(select(Vendor).where(Vendor.code == payload.code))
     if existing.scalar_one_or_none():
@@ -82,7 +82,7 @@ async def create_vendor(
 async def get_vendor(
     vendor_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     result = await db.execute(select(Vendor).where(Vendor.id == vendor_id))
     vendor = result.scalar_one_or_none()
@@ -96,7 +96,7 @@ async def update_vendor(
     vendor_id: int,
     payload: VendorIn,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     result = await db.execute(select(Vendor).where(Vendor.id == vendor_id))
     vendor = result.scalar_one_or_none()
@@ -149,7 +149,7 @@ def _calc_item(item: PurchaseItemIn, is_interstate: bool):
 async def create_purchase(
     payload: PurchaseIn,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     vendor_result = await db.execute(select(Vendor).where(Vendor.id == payload.vendor_id))
     vendor = vendor_result.scalar_one_or_none()
@@ -218,7 +218,7 @@ async def create_purchase(
 @purchase_router.get("/")
 async def list_purchases(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
     vendor_id: Optional[int] = None,
     status: Optional[str] = None,
     page: int = Query(1, ge=1),
@@ -237,7 +237,7 @@ async def list_purchases(
 async def mark_received(
     purchase_number: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     result = await db.execute(
         select(Purchase)
@@ -309,7 +309,7 @@ async def mark_received(
 async def get_purchase(
     purchase_number: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     result = await db.execute(
         select(Purchase).options(selectinload(Purchase.items))
@@ -348,7 +348,7 @@ class PurchaseReturnIn(BaseModel):
 async def create_purchase_return(
     payload: PurchaseReturnIn,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     from app.services.stock_service import record_stock_transaction
     from app.models.models import ProductVariant
@@ -423,7 +423,7 @@ async def create_purchase_return(
 @pr_router.get("/")
 async def list_purchase_returns(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
     page: int = Query(1, ge=1),
     limit: int = Query(20, le=100),
 ):
@@ -463,7 +463,7 @@ class ReceiptEditIn(BaseModel):
 async def create_receipt(
     payload: ReceiptIn,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     from app.services.journal_service import _payment_mode_account
     from app.models.accounting import Account, InvoiceStatus
@@ -514,7 +514,7 @@ async def update_receipt(
     receipt_number: str,
     payload: ReceiptEditIn,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     result = await db.execute(select(ReceiptVoucher).where(ReceiptVoucher.receipt_number == receipt_number))
     receipt = result.scalar_one_or_none()
@@ -529,7 +529,7 @@ async def update_receipt(
 @receipt_router.get("/")
 async def list_receipts(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
     page: int = Query(1, ge=1),
     limit: int = Query(20, le=100),
 ):
@@ -543,7 +543,7 @@ async def list_receipts(
 async def get_receipt(
     receipt_number: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     result = await db.execute(
         select(ReceiptVoucher).where(ReceiptVoucher.receipt_number == receipt_number)
@@ -587,7 +587,7 @@ async def get_receipt(
 @accounting_router.get("/accounts")
 async def get_accounts(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     accounts = (await db.execute(
         select(Account)
@@ -637,7 +637,7 @@ class PaymentVEditIn(BaseModel):
 async def create_payment_voucher(
     payload: PaymentVIn,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     from app.services.journal_service import _payment_mode_account
     from app.models.accounting import Account
@@ -688,7 +688,7 @@ async def create_payment_voucher(
 @payment_v_router.get("/")
 async def list_payment_vouchers(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
     page: int = Query(1, ge=1),
     limit: int = Query(20, le=100),
 ):
@@ -703,7 +703,7 @@ async def update_payment_voucher(
     payment_number: str,
     payload: PaymentVEditIn,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     result = await db.execute(select(PaymentVoucher).where(PaymentVoucher.payment_number == payment_number))
     payment = result.scalar_one_or_none()
@@ -718,7 +718,7 @@ async def update_payment_voucher(
 async def get_payment_voucher(
     payment_number: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     result = await db.execute(
         select(PaymentVoucher).where(PaymentVoucher.payment_number == payment_number)

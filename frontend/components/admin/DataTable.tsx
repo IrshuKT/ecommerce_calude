@@ -1,7 +1,7 @@
 interface Column<T> {
   key: string;
   label: string;
-  render?: (row: T) => React.ReactNode;
+  render?: (row: T, index: number) => React.ReactNode;
   width?: number;
 }
 interface DataTableProps<T> {
@@ -18,7 +18,7 @@ export default function DataTable<T extends Record<string, any>>({ columns, data
         <thead>
           <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
             {columns.map((col) => (
-              <th key={col.key} style={{ padding: "10px 16px", textAlign: "left", fontSize: 12, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap", width: col.width }}>
+              <th key={col.key} style={{ padding: "8px 16px", textAlign: "left", fontSize: 12, fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap", width: col.width }}>
                 {col.label}
               </th>
             ))}
@@ -34,8 +34,8 @@ export default function DataTable<T extends Record<string, any>>({ columns, data
               onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
               {columns.map((col) => (
-                <td key={col.key} style={{ padding: "12px 16px", color: "#334155", verticalAlign: "middle" }}>
-                  {col.render ? col.render(row) : row[col.key] ?? "—"}
+                <td key={col.key} style={{ padding: "6px 16px", color: "#334155", verticalAlign: "middle" }}>
+                  {col.render ? col.render(row, i) : row[col.key] ?? "—"}
                 </td>
               ))}
             </tr>

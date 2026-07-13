@@ -1,7 +1,7 @@
 "use client";
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 interface Vendor { id: number; name: string; phone?: string; gstin?: string; }
@@ -88,7 +88,7 @@ export default function CreatePurchaseReturnPage() {
     setVendorId("");
     if (q.length < 1) { setVendors([]); return; }
     try {
-      const r = await api.get(`/vendors/?limit=50`);
+      const r = await staffApi.get(`/vendors/?limit=50`);
       const data = Array.isArray(r.data) ? r.data : r.data?.items || [];
       const filtered = data.filter((v: any) =>
         v.name?.toLowerCase().includes(q.toLowerCase()) ||
@@ -106,7 +106,7 @@ export default function CreatePurchaseReturnPage() {
     setFetching(true);
     setFetchError("");
     try {
-      const r = await api.get(`/purchases/${purchaseNumberInput.trim()}`);
+      const r = await staffApi.get(`/purchases/${purchaseNumberInput.trim()}`);
       const p = r.data;
       setPurchaseNumber(p.purchase_number);
       setVendorName(p.vendor?.name || p.vendor_name || "");
@@ -141,7 +141,7 @@ export default function CreatePurchaseReturnPage() {
       const nr = [...variantResults]; nr[idx] = []; setVariantResults(nr); return;
     }
     try {
-      const r = await api.get(`/products/variants/search?q=${encodeURIComponent(q)}&limit=8`);
+      const r = await staffApi.get(`/products/variants/search?q=${encodeURIComponent(q)}&limit=8`);
       const nr = [...variantResults]; nr[idx] = Array.isArray(r.data) ? r.data : [];
       setVariantResults(nr);
     } catch {}
@@ -224,7 +224,7 @@ export default function CreatePurchaseReturnPage() {
         })),
       };
       if (mode === "manual") payload.vendor_id = Number(vendorId);
-      const r = await api.post("/purchase-returns/", payload);
+      const r = await staffApi.post("/purchase-returns/", payload);
       setCreated(true);
       alert(`Purchase return ${r.data.return_number} created — Debit note: ${r.data.debit_note_number}`);
       router.push(`/admin/accounting/purchases/return`); // adjust to your actual returns list route

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 
 function InfoRow({ label, value }: { label: string; value: any }) {
@@ -33,7 +33,7 @@ export default function CustomerDetailPage() {
     setLoading(true);
     try {
       // list endpoint with search to find by id — or use direct get if you add one
-      const res = await api.get(`/users/${id}`);
+      const res = await staffApi.get(`/users/${id}`);
         setCustomer(res.data);
     } catch {
       setCustomer(null);
@@ -47,7 +47,7 @@ export default function CustomerDetailPage() {
   const toggleActive = async () => {
     setToggling(true);
     try {
-      await api.patch(`/users/${id}/toggle-active`);
+      await staffApi.patch(`/users/${id}/toggle-active`);
       await load();
     } catch { alert("Failed to update status"); }
     finally { setToggling(false); }
@@ -56,7 +56,7 @@ export default function CustomerDetailPage() {
   const approveTrade = async () => {
     setTradeBusy(true);
     try {
-      await api.patch(`/users/${id}/trade-approve`);
+      await staffApi.patch(`/users/${id}/trade-approve`);
       await load();
     } catch { alert("Failed to approve trade"); }
     finally { setTradeBusy(false); }
@@ -65,7 +65,7 @@ export default function CustomerDetailPage() {
   const revokeTrade = async () => {
     setTradeBusy(true);
     try {
-      await api.patch(`/users/${id}/trade-revoke`);
+      await staffApi.patch(`/users/${id}/trade-revoke`);
       await load();
     } catch { alert("Failed to revoke trade"); }
     finally { setTradeBusy(false); }

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, { bg: string; color: string }> = {
@@ -42,7 +42,7 @@ export default function SalesReturnDetailPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/sales-returns/${returnNumber}`);
+      const res = await staffApi.get(`/sales-returns/${returnNumber}`);
       setRet(res.data);
     } catch {
       setError("Failed to load return");
@@ -57,7 +57,7 @@ export default function SalesReturnDetailPage() {
     if (!window.confirm("Approve this return? This will restock items and post a credit note.")) return;
     setProcessing(true);
     try {
-      await api.patch(`/sales-returns/${returnNumber}/approve`, {});
+      await staffApi.patch(`/sales-returns/${returnNumber}/approve`, {});
       await load();
     } catch (e: any) {
       alert(e.response?.data?.detail || "Failed to approve return");
@@ -70,7 +70,7 @@ export default function SalesReturnDetailPage() {
     const reason = window.prompt("Reason for rejection (optional):") || "";
     setProcessing(true);
     try {
-      await api.patch(`/sales-returns/${returnNumber}/reject`, null, { params: { reason } });
+      await staffApi.patch(`/sales-returns/${returnNumber}/reject`, null, { params: { reason } });
       await load();
     } catch (e: any) {
       alert(e.response?.data?.detail || "Failed to reject return");

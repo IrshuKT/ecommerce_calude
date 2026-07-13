@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 
 const VOUCHER_COLORS: Record<string, { bg: string; color: string }> = {
@@ -39,8 +39,8 @@ export default function JournalPage() {
     setLoading(true);
     try {
       const [jr, ar] = await Promise.all([
-        api.get(`/journals/?limit=100${fromDate ? `&from_date=${fromDate}` : ""}${toDate ? `&to_date=${toDate}` : ""}`).catch(() => ({ data: [] })),
-        api.get("/journals/accounts/").catch(() => ({ data: [] })),
+        staffApi.get(`/journals/?limit=100${fromDate ? `&from_date=${fromDate}` : ""}${toDate ? `&to_date=${toDate}` : ""}`).catch(() => ({ data: [] })),
+        staffApi.get("/journals/accounts/").catch(() => ({ data: [] })),
       ]);
       setJournals(Array.isArray(jr.data) ? jr.data : jr.data?.items || []);
       setAccounts(Array.isArray(ar.data) ? ar.data : []);
@@ -67,7 +67,7 @@ export default function JournalPage() {
 
     setSaving(true);
     try {
-      await api.post("/journals/", {
+      await staffApi.post("/journals/", {
         voucher_date: jForm.voucher_date,
         voucherType: jForm.voucher_type,
         narration: jForm.narration,

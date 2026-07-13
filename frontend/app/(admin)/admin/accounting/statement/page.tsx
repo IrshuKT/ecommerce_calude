@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 
 const TYPE_COLORS: Record<string, { bg: string; color: string }> = {
@@ -28,7 +28,7 @@ export default function StatementPage() {
     setSearching(true);
     try {
       const url = mode === "customer" ? `/users/?limit=50` : `/vendors/?limit=50`;
-      const r = await api.get(url);
+      const r = await staffApi.get(url);
       const data = Array.isArray(r.data) ? r.data : r.data?.items || [];
       const filtered = mode === "customer"
         ? data.filter((u: any) => u.role === "customer")
@@ -50,7 +50,7 @@ export default function StatementPage() {
       const url = mode === "customer"
         ? `/users/?search=${q}&limit=8`
         : `/vendors/?search=${q}`;
-      const r = await api.get(url);
+      const r = await staffApi.get(url);
       const data = Array.isArray(r.data) ? r.data : r.data?.items || [];
       const filtered = mode === "customer"
         ? data.filter((u: any) => u.role === "customer")
@@ -77,7 +77,7 @@ export default function StatementPage() {
       const url = mode === "customer"
         ? `/journals/statement/customer/${selected.id}?${params}`
         : `/journals/statement/vendor/${selected.id}?${params}`;
-      const r = await api.get(url);
+      const r = await staffApi.get(url);
       setStatement(r.data);
     } catch (e: any) {
       alert(e.response?.data?.detail || "Failed to load statement");

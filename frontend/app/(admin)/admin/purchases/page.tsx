@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
 
@@ -35,7 +35,7 @@ export default function PurchasesPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [pr, vr, pd] = await Promise.all([api.get("/purchases/"), api.get("/vendors/"), api.get("/products/")]);
+      const [pr, vr, pd] = await Promise.all([staffApi.get("/purchases/"), staffApi.get("/vendors/"), staffApi.get("/products/")]);
       setPurchases(Array.isArray(pr.data) ? pr.data : pr.data?.items || []);
       setVendors(vr.data || []);
       setProducts(Array.isArray(pd.data) ? pd.data : pd.data?.items || []);
@@ -60,7 +60,7 @@ export default function PurchasesPage() {
 
     setSaving(true);
     try {
-      await api.post("/purchases/", {
+      await staffApi.post("/purchases/", {
         ...form,
         vendor_id: parseInt(form.vendor_id),
         items: items.map(item => ({
@@ -86,7 +86,7 @@ export default function PurchasesPage() {
     if (!confirm(`Mark purchase ${num} as received?`)) return;
     try {
       console.log("Calling:", `/purchases/${num}/receive`);
-      const res = await api.patch(`/purchases/${num}/receive`);
+      const res = await staffApi.patch(`/purchases/${num}/receive`);
       console.log("Response:", res.data);
       load();
       alert("Stock updated!");

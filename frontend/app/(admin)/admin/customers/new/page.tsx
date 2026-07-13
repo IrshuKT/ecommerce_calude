@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 
 export default function NewCustomerPage() {
@@ -28,7 +28,7 @@ export default function NewCustomerPage() {
     setSaving(true);
     setError("");
     try {
-      await api.post("/users/", {
+      await staffApi.post("/users/", {
         name: form.name,
         email: form.email,
         phone: form.phone,

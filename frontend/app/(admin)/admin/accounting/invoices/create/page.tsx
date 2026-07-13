@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 interface Customer { id: number; name: string; phone: string; email: string; }
@@ -79,7 +79,7 @@ export default function CreateManualInvoicePage() {
 
   // preload customers on mount
   useEffect(() => {
-    api.get("/users/?limit=100").then(r => {
+    staffApi.get("/users/?limit=100").then(r => {
       const data = Array.isArray(r.data) ? r.data : r.data?.items || [];
       setCustomers(data.filter((u: any) => u.role === "customer"));
     }).catch(() => {});
@@ -91,7 +91,7 @@ export default function CreateManualInvoicePage() {
     setCustomerId("");
     if (q.length < 1) { setCustomers([]); return; }
     try {
-      const r = await api.get(`/users/?limit=50`);
+      const r = await staffApi.get(`/users/?limit=50`);
       const data = Array.isArray(r.data) ? r.data : r.data?.items || [];
       const filtered = data.filter((u: any) =>
         u.role === "customer" &&
@@ -112,7 +112,7 @@ export default function CreateManualInvoicePage() {
       const nr = [...variantResults]; nr[idx] = []; setVariantResults(nr); return;
     }
     try {
-      const r = await api.get(`/products/variants/search?q=${encodeURIComponent(q)}&limit=8`);
+      const r = await staffApi.get(`/products/variants/search?q=${encodeURIComponent(q)}&limit=8`);
       const nr = [...variantResults]; nr[idx] = Array.isArray(r.data) ? r.data : [];
       setVariantResults(nr);
     } catch { }
@@ -195,7 +195,7 @@ export default function CreateManualInvoicePage() {
           unit:         l.unit,
         })),
       };
-      const r = await api.post("/invoices/manual", payload);
+      const r = await staffApi.post("/invoices/manual", payload);
       router.push(`/admin/accounting/invoices/${encodeURIComponent(r.data.invoice_number)}`);
     } catch (e: any) {
       setError(e.response?.data?.detail || "Failed to create invoice");

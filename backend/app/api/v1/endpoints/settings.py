@@ -8,8 +8,7 @@ import uuid
 
 from app.db.session import get_db
 from app.models.models import CompanySettings, User
-from app.api.v1.endpoints.auth import get_admin_user, get_current_user
-
+from app.api.v1.endpoints.shared_auth import require_roles, ActingUser
 router = APIRouter()
 
 
@@ -56,7 +55,7 @@ async def get_settings(db: AsyncSession = Depends(get_db)):
 async def update_settings(
     payload: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin")),
 ):
     settings = await get_or_create_settings(db)
     allowed = {
@@ -76,7 +75,7 @@ async def update_settings(
 async def upload_logo(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin")),
 ):
     from app.core.config import settings as app_settings
     ext = Path(file.filename).suffix.lower()
@@ -95,7 +94,9 @@ async def upload_logo(
 
 
 @router.get("/accounts")
-async def list_accounts(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_admin_user)):
+async def list_accounts(db: AsyncSession = Depends(get_db), 
+                        current_user: ActingUser = Depends(require_roles("admin")),
+):
     from app.models.accounting import Account
     from sqlalchemy import select
     result = await db.execute(select(Account).where(Account.is_active == True).order_by(Account.code))

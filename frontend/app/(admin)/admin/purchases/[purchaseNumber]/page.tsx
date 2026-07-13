@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 
 export default function PurchaseDetailPage() {
@@ -12,7 +12,7 @@ export default function PurchaseDetailPage() {
 
   useEffect(() => {
     if (purchaseNumber) {
-      api.get(`/purchases/${purchaseNumber}`)
+      staffApi.get(`/purchases/${purchaseNumber}`)
         .then(r => setPurchase(r.data))
         .catch(() => setPurchase(null))
         .finally(() => setLoading(false));

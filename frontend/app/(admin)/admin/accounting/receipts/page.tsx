@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
 import { useRouter } from "next/navigation";
@@ -24,7 +24,7 @@ export default function ReceiptsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [rr, cr] = await Promise.all([api.get("/receipts/"), api.get("/users/")]);
+      const [rr, cr] = await Promise.all([staffApi.get("/receipts/"), staffApi.get("/users/")]);
       setReceipts(Array.isArray(rr.data) ? rr.data : []);
       setCustomers(Array.isArray(cr.data) ? cr.data.filter((u: any) => u.role === "customer") : []);
     } catch { setReceipts([]); } finally { setLoading(false); }
@@ -33,7 +33,7 @@ export default function ReceiptsPage() {
   const loadInvoices = async (customerId: string) => {
     if (!customerId) return;
     try {
-      const res = await api.get(`/invoices/?limit=50`);
+      const res = await staffApi.get(`/invoices/?limit=50`);
       setInvoices(Array.isArray(res.data) ? res.data.filter((i: any) => i.customer_id === parseInt(customerId) && i.balance_due > 0) : []);
     } catch { setInvoices([]); }
   };
@@ -44,7 +44,7 @@ export default function ReceiptsPage() {
     if (!form.customer_id || !form.amount) { alert("Customer and amount are required"); return; }
     setSaving(true);
     try {
-      await api.post("/receipts/", {
+      await staffApi.post("/receipts/", {
         ...form,
         customer_id: parseInt(form.customer_id),
         amount: parseFloat(form.amount),

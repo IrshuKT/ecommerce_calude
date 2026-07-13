@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 
 interface CompanyState {
   settings: any;
@@ -13,7 +13,7 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
   load: async () => {
     if (get().loaded) return;
     try {
-      const res = await api.get("/settings/");
+      const res = await staffApi.get("/settings/");
       set({ settings: res.data, loaded: true });
     } catch { }
   },

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import { useSettings } from "@/hooks/useSettings";
 import { ManualInvoiceButton } from "../InvoiceActions";
 
@@ -18,7 +18,7 @@ export default function InvoiceDetailPage() {
 
   useEffect(() => {
     if (invoiceNumber) {
-      api.get(`/invoices/${invoiceNumber}`)
+      staffApi.get(`/invoices/${invoiceNumber}`)
         .then(r => setInvoice(r.data))
         .catch(() => setInvoice(null))
         .finally(() => setLoading(false));

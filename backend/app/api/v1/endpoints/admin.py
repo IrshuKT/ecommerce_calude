@@ -6,16 +6,19 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 
 from app.db.session import get_db
-from app.models.models import InternalUser, InternalRole, User
+from app.models.models import InternalUser, InternalRole, User ,Product, UserRole,Order
+from sqlalchemy import func
 from app.core.security import get_password_hash, verify_password, create_access_token, decode_token
-from app.api.v1.endpoints.auth import get_admin_user
+from app.api.v1.endpoints.shared_auth import get_acting_staff_user, require_roles, ActingUser
+
+
 
 router = APIRouter()
 
 # Menus available per role, matching the actual sidebar sections
 ROLE_MENUS: dict[str, list[str]] = {
-    "admin":     ["dashboard", "products", "orders", "customers", "vendors", "accounting", "reports", "coupons", "settings", "users"],
-    "manager":   ["dashboard", "products", "orders", "customers", "vendors", "accounting", "reports", "coupons", "users"],
+    "admin":     ["dashboard", "products", "orders", "customers", "vendors", "accounting", "reports", "coupons", "settings", "users","pos"],
+    "manager":   ["dashboard", "products", "orders", "customers", "vendors", "accounting", "reports", "coupons", "users","pos"],
     "sales":     ["dashboard", "orders", "customers","pos"],
     "inventory": ["dashboard", "products", "vendors"],
 }
@@ -90,7 +93,7 @@ class UpdateStaffUserRequest(BaseModel):
 @router.get("/staff-users", response_model=List[StaffUserOut])
 async def list_staff_users(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_admin_user),
+   _: ActingUser = Depends(require_roles("admin")),
 ):
     result = await db.execute(select(InternalUser).order_by(InternalUser.created_at.desc()))
     return result.scalars().all()
@@ -100,7 +103,7 @@ async def list_staff_users(
 async def create_staff_user(
     payload: CreateStaffUserRequest,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_admin_user),
+    _: ActingUser = Depends(require_roles("admin")),
 ):
     if (await db.execute(select(InternalUser).where(InternalUser.email == payload.email))).scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -124,7 +127,7 @@ async def update_staff_user(
     user_id: int,
     payload: UpdateStaffUserRequest,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_admin_user),
+    _: ActingUser = Depends(require_roles("admin")),
 ):
     result = await db.execute(select(InternalUser).where(InternalUser.id == user_id))
     target = result.scalar_one_or_none()
@@ -135,3 +138,45 @@ async def update_staff_user(
         setattr(target, field, value)
     await db.flush()
     return target
+
+class DashboardStats(BaseModel):
+    total_orders: int
+    total_revenue: float
+    pending_orders: int
+    total_products: int
+    total_customers: int
+
+
+@router.get("/dashboard-stats", response_model=DashboardStats)
+async def dashboard_stats(
+    db: AsyncSession = Depends(get_db),
+    _: ActingUser = Depends(require_roles("admin", "manager", "sales")),
+):
+    orders_count = await db.execute(select(func.count()).select_from(Order))
+    total_orders = orders_count.scalar() or 0
+
+    revenue_result = await db.execute(select(func.coalesce(func.sum(Order.total_amount), 0)))
+    total_revenue = float(revenue_result.scalar() or 0)
+
+    pending_result = await db.execute(
+        select(func.count()).select_from(Order).where(Order.status == "placed")
+    )
+    pending_orders = pending_result.scalar() or 0
+
+    products_result = await db.execute(
+        select(func.count()).select_from(Product).where(Product.is_active == True)
+    )
+    total_products = products_result.scalar() or 0
+
+    customers_result = await db.execute(
+        select(func.count()).select_from(User).where(User.role == UserRole.customer)
+    )
+    total_customers = customers_result.scalar() or 0
+
+    return DashboardStats(
+        total_orders=total_orders,
+        total_revenue=total_revenue,
+        pending_orders=pending_orders,
+        total_products=total_products,
+        total_customers=total_customers,
+    )

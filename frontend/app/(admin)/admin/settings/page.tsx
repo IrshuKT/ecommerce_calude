@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8000";
@@ -35,24 +35,24 @@ export default function SettingsPage() {
     if (!selectedBackup) return;
     setRestoring(true);
     try {
-      await api.post("/settings/backup/restore-existing", { filename: selectedBackup, confirm: restoreConfirm });
+      await staffApi.post("/settings/backup/restore-existing", { filename: selectedBackup, confirm: restoreConfirm });
       alert("Restored successfully. Reloading...");
       window.location.reload();
     } catch (e: any) { alert(e.response?.data?.detail || "Restore failed"); }
     finally { setRestoring(false); }
   };
-   const loadBackups = () => api.get("/settings/backup/list").then(r => setBackups(r.data)).catch(() => {});
+   const loadBackups = () => staffApi.get("/settings/backup/list").then(r => setBackups(r.data)).catch(() => {});
   useEffect(() => { loadBackups(); }, []);
 
   const runBackup = async () => {
     setBackingUp(true);
-    try { await api.post("/settings/backup/run"); loadBackups(); }
+    try { await staffApi.post("/settings/backup/run"); loadBackups(); }
     catch (e: any) { alert(e.response?.data?.detail || "Backup failed"); }
     finally { setBackingUp(false); }
   };
   const downloadBackup = async (filename: string) => {
   try {
-    const res = await api.get(`/settings/backup/${filename}/download`, { responseType: "blob" });
+    const res = await staffApi.get(`/settings/backup/${filename}/download`, { responseType: "blob" });
     const url = window.URL.createObjectURL(new Blob([res.data]));
     const a = document.createElement("a");
     a.href = url;
@@ -68,7 +68,7 @@ export default function SettingsPage() {
 };
   const deleteBackup = async (filename: string) => {
     if (!confirm(`Delete ${filename}?`)) return;
-    await api.delete(`/settings/backup/${filename}`);
+    await staffApi.delete(`/settings/backup/${filename}`);
     loadBackups();
   };
 
@@ -79,7 +79,7 @@ export default function SettingsPage() {
       const fd = new FormData();
       fd.append("file", restoreFile);
       fd.append("confirm", restoreConfirm);
-      await api.post("/settings/backup/restore", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      await staffApi.post("/settings/backup/restore", fd, { headers: { "Content-Type": "multipart/form-data" } });
       alert("Restored successfully. Reloading...");
       window.location.reload();
     } catch (e: any) { alert(e.response?.data?.detail || "Restore failed"); }
@@ -87,13 +87,13 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
-    api.get("/settings/").then(r => { setForm(r.data); setLoading(false); }).catch(() => setLoading(false));
+    staffApi.get("/settings/").then(r => { setForm(r.data); setLoading(false); }).catch(() => setLoading(false));
   }, []);
 
   const save = async () => {
     setSaving(true);
     try {
-      await api.patch("/settings/", form);
+      await staffApi.patch("/settings/", form);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (e: any) { alert(e.response?.data?.detail || "Failed to save"); }
@@ -105,7 +105,7 @@ export default function SettingsPage() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await api.post("/settings/logo", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      const res = await staffApi.post("/settings/logo", fd, { headers: { "Content-Type": "multipart/form-data" } });
       setForm({ ...form, logo_url: res.data.logo_url });
     } catch { alert("Failed to upload logo"); }
     finally { setUploadingLogo(false); }

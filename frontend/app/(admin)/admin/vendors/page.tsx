@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
 
@@ -15,7 +15,7 @@ export default function VendorsPage() {
 
   const load = async () => {
     setLoading(true);
-    try { const res = await api.get("/vendors/"); setVendors(res.data || []); }
+    try { const res = await staffApi.get("/vendors/"); setVendors(res.data || []); }
     catch { setVendors([]); } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
@@ -23,7 +23,7 @@ export default function VendorsPage() {
   const save = async () => {
     setSaving(true);
     try {
-      await api.post("/vendors/", { ...form, credit_days: parseInt(form.credit_days) });
+      await staffApi.post("/vendors/", { ...form, credit_days: parseInt(form.credit_days) });
       setShowForm(false);
       setForm({ name: "", code: "", gstin: "", phone: "", email: "", contact_person: "", city: "", state: "Kerala", state_code: "32", credit_days: "30" });
       load();

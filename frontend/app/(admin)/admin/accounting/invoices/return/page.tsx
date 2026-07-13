@@ -1,7 +1,7 @@
 "use client";
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 interface Customer { id: number; name: string; phone: string; email: string; }
@@ -88,7 +88,7 @@ export default function CreateSalesReturnPage() {
     setCustomerId("");
     if (q.length < 1) { setCustomers([]); return; }
     try {
-      const r = await api.get(`/users/?limit=50`);
+      const r = await staffApi.get(`/users/?limit=50`);
       const data = Array.isArray(r.data) ? r.data : r.data?.items || [];
       const filtered = data.filter((u: any) =>
         u.role === "customer" &&
@@ -107,7 +107,7 @@ export default function CreateSalesReturnPage() {
     setFetching(true);
     setFetchError("");
     try {
-      const r = await api.get(`/invoices/${invoiceNumberInput.trim()}`);
+      const r = await staffApi.get(`/invoices/${invoiceNumberInput.trim()}`);
       const inv = r.data;
       setInvoiceNumber(inv.invoice_number);
       setBillingName(inv.billing_name);
@@ -142,7 +142,7 @@ export default function CreateSalesReturnPage() {
       const nr = [...variantResults]; nr[idx] = []; setVariantResults(nr); return;
     }
     try {
-      const r = await api.get(`/products/variants/search?q=${encodeURIComponent(q)}&limit=8`);
+      const r = await staffApi.get(`/products/variants/search?q=${encodeURIComponent(q)}&limit=8`);
       const nr = [...variantResults]; nr[idx] = Array.isArray(r.data) ? r.data : [];
       setVariantResults(nr);
     } catch {}
@@ -225,7 +225,7 @@ export default function CreateSalesReturnPage() {
         })),
       };
       if (mode === "manual") payload.customer_id = Number(customerId);
-    const r = await api.post("/sales-returns/", payload);
+    const r = await staffApi.post("/sales-returns/", payload);
     setCreated(true);
     alert(`Return ${r.data.return_number} created successfully`);
     router.push(`/admin/accounting/sales-returns/${encodeURIComponent(r.data.return_number)}`);

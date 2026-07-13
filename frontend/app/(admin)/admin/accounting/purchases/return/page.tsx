@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
 
@@ -24,7 +24,7 @@ export default function PurchaseReturnsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/purchase-returns/`);
+      const res = await staffApi.get(`/purchase-returns/`);
       setReturns(Array.isArray(res.data) ? res.data : []);
     } catch { setReturns([]); } finally { setLoading(false); }
   };

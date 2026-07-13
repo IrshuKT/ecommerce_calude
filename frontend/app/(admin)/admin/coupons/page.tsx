@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
 
@@ -13,7 +13,7 @@ export default function CouponsPage() {
 
   const load = async () => {
     setLoading(true);
-    try { const res = await api.get("/coupons/"); setCoupons(Array.isArray(res.data) ? res.data : []); }
+    try { const res = await staffApi.get("/coupons/"); setCoupons(Array.isArray(res.data) ? res.data : []); }
     catch { setCoupons([]); } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
@@ -21,7 +21,7 @@ export default function CouponsPage() {
   const save = async () => {
     setSaving(true);
     try {
-      await api.post("/coupons/", { ...form, code: form.code.toUpperCase(), value: parseFloat(form.value), min_order_amount: form.min_order_amount ? parseFloat(form.min_order_amount) : null, max_discount_amount: form.max_discount_amount ? parseFloat(form.max_discount_amount) : null, usage_limit: form.usage_limit ? parseInt(form.usage_limit) : null });
+      await staffApi.post("/coupons/", { ...form, code: form.code.toUpperCase(), value: parseFloat(form.value), min_order_amount: form.min_order_amount ? parseFloat(form.min_order_amount) : null, max_discount_amount: form.max_discount_amount ? parseFloat(form.max_discount_amount) : null, usage_limit: form.usage_limit ? parseInt(form.usage_limit) : null });
       setShowForm(false);
       load();
     } catch (e: any) { alert(e.response?.data?.detail || "Failed to save"); } finally { setSaving(false); }

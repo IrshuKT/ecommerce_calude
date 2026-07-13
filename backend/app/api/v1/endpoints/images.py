@@ -11,7 +11,7 @@ from pathlib import Path
 
 from app.db.session import get_db
 from app.models.models import Product, ProductImage, User
-from app.api.v1.endpoints.auth import get_admin_user
+from app.api.v1.endpoints.shared_auth import require_roles, ActingUser
 from app.core.config import settings
 
 router = APIRouter()
@@ -26,7 +26,7 @@ async def upload_product_image(
     file: UploadFile = File(...),
     is_primary: bool = False,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     # Validate product exists
     result = await db.execute(select(Product).where(Product.id == product_id))
@@ -113,7 +113,7 @@ async def set_primary_image(
     product_id: int,
     image_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     from sqlalchemy import update
     # Unset all primary
@@ -136,7 +136,7 @@ async def delete_product_image(
     product_id: int,
     image_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     result = await db.execute(select(ProductImage).where(ProductImage.id == image_id, ProductImage.product_id == product_id))
     image = result.scalar_one_or_none()

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 
 interface Image {
   id: number;
@@ -27,7 +27,7 @@ export default function ImageUpload({ productId, onImagesChange }: ImageUploadPr
 
   const loadImages = async () => {
     try {
-      const res = await api.get(`/products/${productId}/images`);
+      const res = await staffApi.get(`/products/${productId}/images`);
       setImages(res.data || []);
       onImagesChange?.(res.data || []);
     } catch { setImages([]); }
@@ -40,7 +40,7 @@ export default function ImageUpload({ productId, onImagesChange }: ImageUploadPr
       try {
         const formData = new FormData();
         formData.append("file", file);
-        await api.post(`/products/${productId}/images`, formData, {
+        await staffApi.post(`/products/${productId}/images`, formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
       } catch (e: any) {
@@ -63,7 +63,7 @@ export default function ImageUpload({ productId, onImagesChange }: ImageUploadPr
 
   const setPrimary = async (imageId: number) => {
     try {
-      await api.patch(`/products/${productId}/images/${imageId}/set-primary`);
+      await staffApi.patch(`/products/${productId}/images/${imageId}/set-primary`);
       await loadImages();
     } catch { alert("Failed to set primary"); }
   };
@@ -71,7 +71,7 @@ export default function ImageUpload({ productId, onImagesChange }: ImageUploadPr
   const deleteImage = async (imageId: number) => {
     if (!confirm("Delete this image?")) return;
     try {
-      await api.delete(`/products/${productId}/images/${imageId}`);
+      await staffApi.delete(`/products/${productId}/images/${imageId}`);
       await loadImages();
     } catch { alert("Failed to delete"); }
   };

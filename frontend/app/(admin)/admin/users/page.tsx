@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 
 interface StaffUser {
   id: number;
@@ -27,7 +27,7 @@ export default function StaffUsersPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api.get("/admin/staff-users");
+      const res = await staffApi.get("/admin/staff-users");
       setUsers(res.data);
     } catch {
       setUsers([]);
@@ -134,11 +134,11 @@ function StaffModal({ existing, onClose, onSaved }: {
     setSaving(true);
     try {
       if (existing) {
-        await api.patch(`/admin/staff-users/${existing.id}`, {
+        await staffApi.patch(`/admin/staff-users/${existing.id}`, {
           name, phone: phone || null, role, is_active: isActive,
         });
       } else {
-        await api.post("/admin/staff-users", {
+        await staffApi.post("/admin/staff-users", {
           name, email, phone: phone || null, password, role,
         });
       }

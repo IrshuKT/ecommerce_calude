@@ -11,7 +11,7 @@ from sqlalchemy import func
 from app.db.session import get_db
 from app.models.models import (Order, OrderItem, OrderTracking, CartItem, ProductVariant,
     Product, Address, Coupon, User, OrderStatus, PaymentMethod, PaymentStatus)
-from app.api.v1.endpoints.auth import get_current_user, get_admin_user
+from app.api.v1.endpoints.auth import get_current_user
 from app.core.config import settings
 from app.models.models import OrderTracking
 from app.services.journal_service import get_next_number
@@ -319,3 +319,133 @@ async def get_order(order_number: str, current_user: User = Depends(get_current_
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return order
+
+
+class EditOrderItemIn(BaseModel):
+    variant_id: int
+    quantity: int
+    custom_width_ft: Optional[Decimal] = None
+    custom_height_ft: Optional[Decimal] = None
+
+
+class EditOrderRequest(BaseModel):
+    address_id: int
+    items: List[EditOrderItemIn]
+
+
+@router.patch("/{order_number:path}/edit")
+async def edit_order(
+    order_number: str,
+    payload: EditOrderRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Order)
+        .options(selectinload(Order.items))
+        .where(Order.order_number == order_number, Order.user_id == current_user.id)
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status != OrderStatus.placed:
+        raise HTTPException(status_code=400, detail="This order can no longer be edited")
+    if not payload.items:
+        raise HTTPException(status_code=400, detail="Order must have at least one item")
+
+    addr_result = await db.execute(
+        select(Address).where(Address.id == payload.address_id, Address.user_id == current_user.id)
+    )
+    address = addr_result.scalar_one_or_none()
+    if not address:
+        raise HTTPException(status_code=404, detail="Address not found")
+
+    variant_ids = [i.variant_id for i in payload.items]
+    var_result = await db.execute(
+        select(ProductVariant)
+        .options(selectinload(ProductVariant.product))
+        .where(ProductVariant.id.in_(variant_ids))
+    )
+    variants = {v.id: v for v in var_result.scalars().all()}
+
+    for item in payload.items:
+        if item.variant_id not in variants:
+            raise HTTPException(status_code=400, detail=f"Variant id={item.variant_id} not found")
+        v = variants[item.variant_id]
+        if v.track_inventory and v.stock_qty < item.quantity:
+            raise HTTPException(status_code=400, detail=f"Insufficient stock for {v.product.name}")
+
+    is_interstate = address.state_code != settings.STORE_STATE_CODE
+
+    subtotal = Decimal(0)
+    items_data = []
+    for item in payload.items:
+        v = variants[item.variant_id]
+        p = v.product
+        area = None
+        if p.price_type == "per_sqft" and item.custom_width_ft and item.custom_height_ft:
+            area = (item.custom_width_ft * item.custom_height_ft).quantize(Decimal("0.01"))
+        unit_price = v.retail_price
+        line_total = (unit_price * item.quantity).quantize(Decimal("0.01"))
+        subtotal += line_total
+        items_data.append({
+            "variant": v, "product": p, "item": item,
+            "unit_price": unit_price, "line_total": line_total, "area": area,
+        })
+
+    discount_amount = Decimal(0)
+    if order.coupon_id:
+        coupon_result = await db.execute(select(Coupon).where(Coupon.id == order.coupon_id))
+        coupon = coupon_result.scalar_one_or_none()
+        if coupon and coupon.is_active:
+            if coupon.coupon_type == "percentage":
+                discount_amount = (subtotal * coupon.value / 100).quantize(Decimal("0.01"))
+                if coupon.max_discount_amount:
+                    discount_amount = min(discount_amount, coupon.max_discount_amount)
+            else:
+                discount_amount = min(coupon.value, subtotal)
+
+    cgst_total = sgst_total = igst_total = Decimal(0)
+    for od in items_data:
+        item_taxable = od["line_total"]
+        if subtotal > 0 and discount_amount > 0:
+            item_taxable -= (discount_amount * od["line_total"] / subtotal).quantize(Decimal("0.01"))
+        c, s, i = calculate_gst(item_taxable, od["product"].gst_rate, is_interstate)
+        cgst_total += c; sgst_total += s; igst_total += i
+
+    taxable_amount = subtotal - discount_amount
+    total_amount = taxable_amount + cgst_total + sgst_total + igst_total + order.shipping_charge
+
+    order.shipping_name = address.full_name
+    order.shipping_phone = address.phone
+    order.shipping_line1 = address.line1
+    order.shipping_line2 = address.line2
+    order.shipping_city = address.city
+    order.shipping_state = address.state
+    order.shipping_state_code = address.state_code
+    order.shipping_pincode = address.pincode
+    order.subtotal = subtotal
+    order.discount_amount = discount_amount
+    order.cgst_amount = cgst_total
+    order.sgst_amount = sgst_total
+    order.igst_amount = igst_total
+    order.total_amount = total_amount
+    order.is_interstate = is_interstate
+
+    for old_item in order.items:
+        await db.delete(old_item)
+    await db.flush()
+
+    for od in items_data:
+        db.add(OrderItem(
+            order_id=order.id, variant_id=od["variant"].id,
+            product_name=od["product"].name, variant_sku=od["variant"].sku,
+            selected_attributes=od["variant"].selected_attributes,
+            unit_price=od["unit_price"], quantity=od["item"].quantity,
+            custom_width_ft=od["item"].custom_width_ft, custom_height_ft=od["item"].custom_height_ft,
+            area_sqft=od["area"], line_total=od["line_total"],
+        ))
+
+    db.add(OrderTracking(order_id=order.id, status=order.status, message="Order edited by customer"))
+    await db.commit()
+    return {"order_number": order.order_number, "total_amount": str(order.total_amount), "message": "Order updated"}

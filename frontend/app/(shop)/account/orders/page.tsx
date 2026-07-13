@@ -87,11 +87,17 @@ export default function MyOrdersPage() {
                 <span>Status: <strong style={{ color: order.payment_status === "paid" ? "#16a34a" : "#d97706", textTransform: "capitalize" }}>{order.payment_status}</strong></span>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <Link href={`/account/invoices?order=${order.order_number}`}
-                  style={{ fontSize: 13, color: "#0284c7", textDecoration: "none", padding: "5px 12px", border: "1px solid #bfdbfe", borderRadius: 6, background: "#eff6ff" }}>
-                  🧾 Invoice
-                </Link>
-              </div>
+  {order.status === "placed" && (
+  <Link href={`/account/orders/${encodeURIComponent(order.order_number)}/edit`}
+    style={{ fontSize: 13, color: "#d97706", textDecoration: "none", padding: "5px 12px", border: "1px solid #fde68a", borderRadius: 6, background: "#fffbeb" }}>
+    ✎ Edit Order
+  </Link>
+)}
+  <Link href={`/account/invoices?order=${encodeURIComponent(order.order_number)}`}
+    style={{ fontSize: 13, color: "#0284c7", textDecoration: "none", padding: "5px 12px", border: "1px solid #bfdbfe", borderRadius: 6, background: "#eff6ff" }}>
+    🧾 Invoice
+  </Link>
+</div>
             </div>
           </div>
         );

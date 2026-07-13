@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
 import { useRouter } from "next/navigation";
@@ -24,7 +24,7 @@ export default function PaymentVouchersPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [pv, vr, pr] = await Promise.all([api.get("/payment-vouchers/"), api.get("/vendors/"), api.get("/purchases/")]);
+      const [pv, vr, pr] = await Promise.all([staffApi.get("/payment-vouchers/"), staffApi.get("/vendors/"), staffApi.get("/purchases/")]);
       setPayments(Array.isArray(pv.data) ? pv.data : []);
       setVendors(vr.data || []);
       setPurchases(Array.isArray(pr.data) ? pr.data : pr.data?.items || []);
@@ -37,7 +37,7 @@ export default function PaymentVouchersPage() {
     if (!form.vendor_id || !form.amount) { alert("Vendor and amount are required"); return; }
     setSaving(true);
     try {
-      await api.post("/payment-vouchers/", {
+      await staffApi.post("/payment-vouchers/", {
         ...form,
         vendor_id: parseInt(form.vendor_id),
         amount: parseFloat(form.amount),

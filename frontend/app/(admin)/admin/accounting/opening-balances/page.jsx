@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 
 const fmt = (n) =>
   new Intl.NumberFormat("en-IN", {
@@ -33,7 +33,7 @@ export default function OpeningBalancePage() {
   // ── fetch data ───────────────────────────────────────────────────────────
   const fetchPosted = useCallback(async () => {
     try {
-      const r = await api.get("/journals/opening-balances");
+      const r = await staffApi.get("/journals/opening-balances");
       setPosted(Array.isArray(r.data) ? r.data : []);
     } catch {
       /* silent */
@@ -42,7 +42,7 @@ export default function OpeningBalancePage() {
 
   const fetchCustomers = useCallback(async () => {
     try {
-      const r = await api.get("/users/?limit=100");
+      const r = await staffApi.get("/users/?limit=100");
       const data = Array.isArray(r.data) ? r.data : r.data?.items || [];
       setCustomers(data.filter((u) => u.role === "customer"));
     } catch {
@@ -52,7 +52,7 @@ export default function OpeningBalancePage() {
 
   const fetchVendors = useCallback(async () => {
     try {
-      const r = await api.get("/vendors/?limit=100");
+      const r = await staffApi.get("/vendors/?limit=100");
       const data = Array.isArray(r.data) ? r.data : r.data?.items || [];
       setVendors(data);
     } catch {
@@ -110,7 +110,7 @@ export default function OpeningBalancePage() {
 
     setSaving(true);
     try {
-      const r = await api.post("/journals/opening-balances", {
+      const r = await staffApi.post("/journals/opening-balances", {
         entries,
         as_of_date: rows[0].as_of_date,
       });
@@ -129,7 +129,7 @@ export default function OpeningBalancePage() {
   const handleDelete = async (journalId, partyName) => {
     if (!confirm(`Delete opening balance for ${partyName}? This will reverse the journal entry.`)) return;
     try {
-      await api.delete(`/journals/opening-balances/${journalId}`);
+      await staffApi.delete(`/journals/opening-balances/${journalId}`);
       fetchPosted();
     } catch (e) {
       alert(e.response?.data?.detail || "Delete failed");

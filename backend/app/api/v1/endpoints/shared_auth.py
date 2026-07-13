@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from dataclasses import dataclass
 from typing import Optional
-
 from app.db.session import get_db
 from app.models.models import User, UserRole, InternalUser, InternalRole
 from app.core.security import decode_token
@@ -52,6 +51,38 @@ async def get_acting_staff_user(
         raise HTTPException(status_code=401, detail="User not found or inactive")
     if user.role != UserRole.admin:
         raise HTTPException(status_code=403, detail="Admin access required")
+    return ActingUser(id=user.id, name=user.name, role="admin", is_customer_admin=True)
+
+
+async def get_optional_staff_user(
+    token: Optional[str] = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[ActingUser]:
+    """
+    Like get_acting_staff_user, but returns None instead of raising
+    when there's no token, an invalid token, or a customer (non-admin) token.
+    Use this on endpoints that need to allow EITHER staff OR customer access,
+    where the customer side is checked separately.
+    """
+    if not token:
+        return None
+
+    payload = decode_token(token)
+    if not payload:
+        return None
+
+    if payload.get("type") == "internal":
+        result = await db.execute(select(InternalUser).where(InternalUser.id == int(payload.get("sub"))))
+        staff = result.scalar_one_or_none()
+        if not staff or not staff.is_active:
+            return None
+        return ActingUser(id=staff.id, name=staff.name, role=staff.role.value, is_customer_admin=False)
+
+    # customer-table token — only return if role == admin (matches original ActingUser semantics)
+    result = await db.execute(select(User).where(User.id == int(payload.get("sub"))))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active or user.role != UserRole.admin:
+        return None
     return ActingUser(id=user.id, name=user.name, role="admin", is_customer_admin=True)
 
 

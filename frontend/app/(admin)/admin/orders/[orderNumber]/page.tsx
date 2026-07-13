@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 import Link from "next/link";
 import Toast, { ToastData } from "@/components/admin/Toast";
@@ -59,7 +59,7 @@ export default function OrderDetailPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/orders/admin/${orderNumber}`);
+      const res = await staffApi.get(`/orders/admin/${orderNumber}`);
       setOrder(res.data);
       setNewStatus(res.data.status);
     } catch { alert("Failed to load order"); }
@@ -69,7 +69,7 @@ export default function OrderDetailPage() {
  const updateStatus = async () => {
     setUpdating(true);
     try {
-      const res = await api.patch(`/orders/${orderNumber}/status`, { status: newStatus });
+      const res = await staffApi.patch(`/orders/${orderNumber}/status`, { status: newStatus });
       const { status, invoice_result, invoice_number } = res.data;
 
       let msg = `Order status updated to "${status}".`;

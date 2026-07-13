@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
-import api from "@/lib/api";
+
 import PageHeader from "@/components/admin/PageHeader";
+import staffApi from "@/lib/staffApi";
 
 const TYPE_COLORS: Record<string, { bg: string; color: string }> = {
   asset:     { bg: "#dbeafe", color: "#1d4ed8" },
@@ -28,7 +29,7 @@ export default function ChartOfAccountsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const r = await api.get("/journals/accounts/all");
+      const r = await staffApi.get("/journals/accounts/all");
       setAccounts(Array.isArray(r.data) ? r.data : []);
     } catch { setAccounts([]); }
     finally { setLoading(false); }
@@ -62,9 +63,9 @@ export default function ChartOfAccountsPage() {
     setSaving(true);
     try {
       if (editing) {
-        await api.patch(`/journals/accounts/${editing.id}`, form);
+        await staffApi.patch(`/journals/accounts/${editing.id}`, form);
       } else {
-        await api.post("/journals/accounts", form);
+        await staffApi.post("/journals/accounts", form);
       }
       setShowForm(false);
       load();
@@ -76,7 +77,7 @@ export default function ChartOfAccountsPage() {
   const deleteAccount = async (a: any) => {
     if (!confirm(`Delete "${a.name}"? This cannot be undone.`)) return;
     try {
-      await api.delete(`/journals/accounts/${a.id}`);
+      await staffApi.delete(`/journals/accounts/${a.id}`);
       load();
     } catch (e: any) {
       alert(e.response?.data?.detail || "Cannot delete this account");

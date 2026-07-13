@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
 
@@ -9,7 +9,7 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get("/users/").then(r => setCustomers(Array.isArray(r.data) ? r.data : [])).catch(() => setCustomers([])).finally(() => setLoading(false));
+    staffApi.get("/users/").then(r => setCustomers(Array.isArray(r.data) ? r.data : [])).catch(() => setCustomers([])).finally(() => setLoading(false));
   }, []);
 
   const columns = [

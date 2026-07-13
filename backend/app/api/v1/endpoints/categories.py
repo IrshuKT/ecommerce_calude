@@ -6,8 +6,8 @@ from typing import Optional
 from slugify import slugify
 from app.db.session import get_db
 from app.models.models import Category
-from app.api.v1.endpoints.auth import get_admin_user
-from app.models.models import User
+from app.api.v1.endpoints.shared_auth import require_roles, ActingUser
+
 
 router = APIRouter()
 
@@ -31,7 +31,7 @@ async def list_categories(db: AsyncSession = Depends(get_db)):
 async def create_category(
     payload: CategoryIn,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     sl = payload.slug or slugify(payload.name)
     cat = Category(name=payload.name, slug=sl, description=payload.description,
@@ -45,7 +45,7 @@ async def create_category(
 async def delete_category(
     category_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     result = await db.execute(select(Category).where(Category.id == category_id))
     cat = result.scalar_one_or_none()

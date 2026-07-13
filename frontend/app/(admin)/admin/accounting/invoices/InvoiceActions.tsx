@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import { useSettings } from "@/hooks/useSettings";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8000";
@@ -24,7 +24,7 @@ export function InvoiceActions({ invoiceNumber, status, onRefresh }: Props) {
     setConfirming(true);
     setError("");
     try {
-      const r = await api.post(`/invoices/${invoiceNumber}/confirm`, {});
+      const r = await staffApi.post(`/invoices/${invoiceNumber}/confirm`, {});
       onRefresh();
     } catch (e: any) {
       setError(e.response?.data?.detail || "Confirm failed");
@@ -38,7 +38,7 @@ export function InvoiceActions({ invoiceNumber, status, onRefresh }: Props) {
     setCancelling(true);
     setError("");
     try {
-      await api.post(`/invoices/${invoiceNumber}/cancel`, {});
+      await staffApi.post(`/invoices/${invoiceNumber}/cancel`, {});
       onRefresh();
     } catch (e: any) {
       setError(e.response?.data?.detail || "Cancel failed");

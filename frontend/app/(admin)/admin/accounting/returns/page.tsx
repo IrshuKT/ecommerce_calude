@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
 
@@ -26,7 +26,7 @@ export default function SalesReturnsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/sales-returns/${filter !== "all" ? `?status=${filter}` : ""}`);
+      const res = await staffApi.get(`/sales-returns/${filter !== "all" ? `?status=${filter}` : ""}`);
       setReturns(Array.isArray(res.data) ? res.data : []);
     } catch { setReturns([]); } finally { setLoading(false); }
   };
@@ -37,7 +37,7 @@ export default function SalesReturnsPage() {
     if (!confirm(`Approve return ${returnNumber}? A credit note will be issued.`)) return;
     setProcessing(returnNumber);
     try {
-      const res = await api.patch(`/sales-returns/${returnNumber}/approve`);
+      const res = await staffApi.patch(`/sales-returns/${returnNumber}/approve`);
       alert(`Approved! Credit note: ${res.data.credit_note_number}`);
       load();
     } catch (e: any) { alert(e.response?.data?.detail || "Failed"); }
@@ -49,7 +49,7 @@ export default function SalesReturnsPage() {
     if (reason === null) return;
     setProcessing(returnNumber);
     try {
-      await api.patch(`/sales-returns/${returnNumber}/reject?reason=${encodeURIComponent(reason)}`);
+      await staffApi.patch(`/sales-returns/${returnNumber}/reject?reason=${encodeURIComponent(reason)}`);
       load();
     } catch (e: any) { alert(e.response?.data?.detail || "Failed"); }
     finally { setProcessing(null); }

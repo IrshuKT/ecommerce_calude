@@ -1,8 +1,7 @@
 import { create } from "zustand";
 import api from "@/lib/api";
-
 export interface CartItem {
-  id: number;                 // cart row id (needed for PATCH/DELETE)
+  id: number;                 
   variant_id: number;
   quantity: number;
   custom_width_ft?: number;

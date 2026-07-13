@@ -17,7 +17,7 @@ from jose import JWTError
 from app.core.security import decode_token
 import traceback
 
-from app.api.v1.endpoints.auth import get_admin_user
+
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)

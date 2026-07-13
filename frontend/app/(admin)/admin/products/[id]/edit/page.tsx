@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8000";
@@ -58,8 +58,8 @@ export default function ProductEditPage() {
 
   useEffect(() => {
     Promise.all([
-      api.get(`/products/admin/${id}`),
-      api.get("/categories/"),
+      staffApi.get(`/products/admin/${id}`),
+      staffApi.get("/categories/"),
     ]).then(([prodRes, catRes]) => {
       const p = prodRes.data;
       setCategories(catRes.data || []);
@@ -160,7 +160,7 @@ const uploadVariantImage = async (index: number, file: File) => {
   try {
     const fd = new FormData();
     fd.append("file", file);
-    const res = await api.post(`/products/variants/${variant.id}/image`, fd, {
+    const res = await staffApi.post(`/products/variants/${variant.id}/image`, fd, {
       headers: { "Content-Type": "multipart/form-data" },
     });
     updateVariant(index, "image_url", res.data.image_url);
@@ -242,7 +242,7 @@ const uploadVariantImage = async (index: number, file: File) => {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("is_primary", String(images.length === 0));
-      const res = await api.post(`/products/${id}/images`, formData, {
+      const res = await staffApi.post(`/products/${id}/images`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setImages([...images, res.data]);
@@ -253,14 +253,14 @@ const uploadVariantImage = async (index: number, file: File) => {
   const deleteImage = async (imgId: number) => {
     if (!confirm("Delete this image?")) return;
     try {
-      await api.delete(`/products/${id}/images/${imgId}`);
+      await staffApi.delete(`/products/${id}/images/${imgId}`);
       setImages(images.filter(img => img.id !== imgId));
     } catch { alert("Failed to delete image"); }
   };
 
   const setPrimaryImage = async (imgId: number) => {
     try {
-      await api.patch(`/products/${id}/images/${imgId}`, { is_primary: true });
+      await staffApi.patch(`/products/${id}/images/${imgId}`, { is_primary: true });
       setImages(images.map(img => ({ ...img, is_primary: img.id === imgId })));
     } catch { alert("Failed to set primary image"); }
   };
@@ -270,7 +270,7 @@ const uploadVariantImage = async (index: number, file: File) => {
     if (!newCatName.trim()) return;
     setAddingCat(true);
     try {
-      const res = await api.post("/categories/", { name: newCatName });
+      const res = await staffApi.post("/categories/", { name: newCatName });
       setCategories([...categories, res.data]);
       setInfo({ ...info, category_id: String(res.data.id) });
       setNewCatName("");
@@ -314,7 +314,7 @@ const uploadVariantImage = async (index: number, file: File) => {
 
     setSaving(true);
     try {
-      await api.patch(`/products/${id}`, {
+      await staffApi.patch(`/products/${id}`, {
         name: info.name,
         short_description: info.short_description,
         description: info.description,

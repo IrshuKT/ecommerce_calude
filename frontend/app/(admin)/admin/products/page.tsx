@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
 
@@ -17,7 +17,7 @@ export default function ProductsPage() {
   const load = async () => {
   setLoading(true);
   try {
-    const res = await api.get(`/products/admin/?search=${search}&limit=100${showInactive ? "&include_inactive=true" : ""}`);
+    const res = await staffApi.get(`/products/admin/?search=${search}&limit=100${showInactive ? "&include_inactive=true" : ""}`);
     setProducts(res.data?.items || []);
   } catch { setProducts([]); } finally { setLoading(false); }
 };
@@ -26,16 +26,16 @@ export default function ProductsPage() {
 
   const toggleActive = async (id: number, current: boolean) => {
     try {
-      await api.patch(`/products/${id}`, { is_active: !current });
+      await staffApi.patch(`/products/${id}`, { is_active: !current });
       load();
     } catch { alert("Failed to update"); }
   };
 
   const columns = [
-    { key: "primary_image", label: "", width: 56, render: (r: any) => (
-      <div style={{ width: 40, height: 40, borderRadius: 6, background: "#f1f5f9", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
-        {r.primary_image ? <img src={r.primary_image} alt={r.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "🪟"}
-      </div>
+    { key: "serial", label: "#", width: 48, render: (r: any, index: number) => (
+      <span style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>
+        {index + 1}
+      </span>
     )},
     { key: "name", label: "Product", render: (r: any) => (
   <span onClick={() => router.push(`/admin/products/${r.id}`)}

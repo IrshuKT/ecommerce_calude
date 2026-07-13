@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 
 function InfoRow({ label, value }: { label: string; value: any }) {
   return (
@@ -22,7 +22,7 @@ export default function PaymentVoucherDetailPage() {
 
   useEffect(() => {
     if (paymentNumber) {
-      api.get(`/payment-vouchers/${paymentNumber}`)
+      staffApi.get(`/payment-vouchers/${paymentNumber}`)
         .then(r => setPayment(r.data))
         .catch(() => setError("Failed to load payment voucher"))
         .finally(() => setLoading(false));

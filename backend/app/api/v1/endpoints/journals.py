@@ -9,7 +9,7 @@ from app.db.session import get_db
 from app.models.accounting import (Journal, JournalLine, Account, Vendor, VoucherType, SalesInvoice,SalesReturn,ReceiptVoucher,
 Purchase,PurchaseReturn,PaymentVoucher)
 from app.models.models import User
-from app.api.v1.endpoints.auth import get_admin_user
+from app.api.v1.endpoints.shared_auth import require_roles, ActingUser
 
 
 router = APIRouter()
@@ -32,7 +32,7 @@ class OpeningBalanceBulkPayload(BaseModel):
 async def create_opening_balances(
     payload: OpeningBalanceBulkPayload,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     """
     Post opening balances for customers and/or vendors.
@@ -194,7 +194,7 @@ async def create_opening_balances(
 @router.get("/opening-balances")
 async def list_opening_balances(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     """List all posted opening balance journals with party info."""
     from app.models.models import User as UserModel
@@ -251,7 +251,7 @@ async def list_opening_balances(
 async def delete_opening_balance(
     journal_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     """Delete an opening balance journal entry."""
     result = await db.execute(
@@ -272,7 +272,7 @@ async def delete_opening_balance(
 @router.get("/")
 async def list_journals(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
     voucher_type: Optional[str] = None,
@@ -321,7 +321,7 @@ async def list_journals(
 async def create_manual_journal(
     payload: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     from app.services.journal_service import post_journal
     from app.models.accounting import VoucherType
@@ -361,7 +361,7 @@ async def create_manual_journal(
 @router.get("/accounts", include_in_schema=False)
 async def list_accounts_for_journal(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     from app.models.accounting import Account
     result = await db.execute(
@@ -382,7 +382,7 @@ class AccountIn(BaseModel):
 @router.get("/accounts/all")
 async def list_all_accounts(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     result = await db.execute(
         select(Account).order_by(Account.code)
@@ -406,7 +406,7 @@ async def list_all_accounts(
 async def create_account(
     payload: AccountIn,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     # check duplicate code
     existing = await db.execute(select(Account).where(Account.code == payload.code))
@@ -438,7 +438,7 @@ async def update_account(
     account_id: int,
     payload: AccountIn,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     result = await db.execute(select(Account).where(Account.id == account_id))
     account = result.scalar_one_or_none()
@@ -468,7 +468,7 @@ async def update_account(
 async def delete_account(
     account_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     result = await db.execute(select(Account).where(Account.id == account_id))
     account = result.scalar_one_or_none()
@@ -487,7 +487,7 @@ async def customer_statement(
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     from app.models.models import User as UserModel
  
@@ -603,7 +603,7 @@ async def vendor_statement(
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     r = await db.execute(select(Vendor).where(Vendor.id == vendor_id))
     vendor = r.scalar_one_or_none()

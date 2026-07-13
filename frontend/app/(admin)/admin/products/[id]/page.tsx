@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") || "http://localhost:8000";
@@ -76,7 +76,7 @@ export default function ProductViewPage() {
       const params: any = { page, limit: 30 };
       if (filterVariant) params.variant_id = filterVariant;
       if (filterType)    params.txn_type   = filterType;
-      const r = await api.get(`/products/${id}/stock-transactions`, { params });
+      const r = await staffApi.get(`/products/${id}/stock-transactions`, { params });
       setTxns(r.data.items);
       setTxnTotal(r.data.total);
       setTxnPage(page);
@@ -90,7 +90,7 @@ export default function ProductViewPage() {
   const loadAvgCost = async () => {
     setAvgLoading(true);
     try {
-      const r = await api.get(`/products/${id}/avg-cost`);
+      const r = await staffApi.get(`/products/${id}/avg-cost`);
       setAvgCosts(Array.isArray(r.data) ? r.data : []);
     } catch {
       setAvgCosts([]);
@@ -101,14 +101,14 @@ export default function ProductViewPage() {
 
   const toggleActive = async () => {
     try {
-      await api.patch(`/products/${id}`, { is_active: !product.is_active });
+      await staffApi.patch(`/products/${id}`, { is_active: !product.is_active });
       setProduct((p: any) => ({ ...p, is_active: !p.is_active }));
     } catch { alert("Failed to update"); }
   };
 
   useEffect(() => {
     if (id) {
-      api.get(`/products/admin/${id}`)
+      staffApi.get(`/products/admin/${id}`)
         .then(r => setProduct(r.data))
         .catch(() => setProduct(null))
         .finally(() => setLoading(false));
@@ -117,7 +117,7 @@ export default function ProductViewPage() {
   }, [id]);
 
   useEffect(() => {
-    api.get("/products/admin/ids").then(r => {
+    staffApi.get("/products/admin/ids").then(r => {
       const ids = (r.data.ids || []).map(Number);
       setAllProductIds(ids);
       setCurrentIndex(ids.indexOf(Number(id)));
@@ -517,7 +517,7 @@ export default function ProductViewPage() {
           onClose={() => setShowAdjModal(false)}
           onSaved={() => {
             setShowAdjModal(false);
-            api.get(`/products/admin/${id}`).then(r => setProduct(r.data));
+            staffApi.get(`/products/admin/${id}`).then(r => setProduct(r.data));
             setTxnRefreshKey(k => k + 1);
           }}
         />
@@ -547,7 +547,7 @@ function AdjustmentModal({ product, productId, onClose, onSaved }: {
     if (!note.trim()) { setError("Please add a note explaining the adjustment"); return; }
     setSaving(true); setError("");
     try {
-      await api.post(`/products/${productId}/stock-transactions`, {
+      await staffApi.post(`/products/${productId}/stock-transactions`, {
         variant_id: parseInt(variantId), txn_type: "adjustment",
         new_qty: parsedQty, note, reference_type: "manual", reference_id: refId || null,
       });

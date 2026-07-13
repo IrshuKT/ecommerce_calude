@@ -16,7 +16,8 @@ from app.models.accounting import (
     SalesInvoice, Purchase, GSTReturn, GSTReturnType
 )
 from app.models.models import User
-from app.api.v1.endpoints.auth import get_admin_user
+
+from app.api.v1.endpoints.shared_auth import require_roles, ActingUser
 from app.services.journal_service import get_account_balance
 from app.models.models import( Product,ProductVariant,Order,OrderItem,OrderStatus)
 
@@ -30,7 +31,7 @@ router = APIRouter()
 async def get_ledger(
     account_code: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
 ):
@@ -85,7 +86,7 @@ async def get_ledger(
 @router.get("/trial-balance")
 async def trial_balance(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
     as_of_date: Optional[date] = None,
 ):
     acc_result = await db.execute(
@@ -140,7 +141,7 @@ async def trial_balance(
 @router.get("/profit-loss")
 async def profit_loss(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
 ):
@@ -197,7 +198,7 @@ async def profit_loss(
 @router.get("/balance-sheet")
 async def balance_sheet(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
     as_of_date: Optional[date] = None,
 ):
     as_of = as_of_date or date.today()
@@ -257,7 +258,7 @@ gst_router = APIRouter()
 @gst_router.get("/gstr1")
 async def generate_gstr1(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
     month: int = Query(..., ge=1, le=12),
     year: int = Query(..., ge=2020),
 ):
@@ -325,7 +326,7 @@ async def generate_gstr1(
 @gst_router.get("/gstr3b")
 async def generate_gstr3b(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
     month: int = Query(..., ge=1, le=12),
     year: int = Query(..., ge=2020),
 ):
@@ -395,7 +396,7 @@ async def cash_book(
     from_date: date = Query(...),
     to_date:   date = Query(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     # find cash account (account_type=asset, code starts with your cash code)
     cash_result = await db.execute(
@@ -479,7 +480,7 @@ async def day_book(
     from_date: date = Query(...),
     to_date:   date = Query(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     rows = (await db.execute(
         select(JournalLine, Journal, Account)
@@ -531,7 +532,7 @@ async def ledger(
     from_date:    date = Query(...),
     to_date:      date = Query(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     account = (await db.execute(
         select(Account).where(Account.code == account_code)
@@ -615,8 +616,10 @@ async def stock_report(
     from_date: date = Query(...),
     to_date:   date = Query(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
+    from app.models.models import StockTransaction
+
     variants = (await db.execute(
         select(ProductVariant, Product)
         .join(Product, ProductVariant.product_id == Product.id)
@@ -633,60 +636,50 @@ async def stock_report(
     total_return_qty = 0
     low_stock_count  = 0
 
-    for variant, product in variants:                          # ← loop header
-        # All-time movements (to compute current stock)
-        all_sold_result = await db.execute(                    # ← indented inside loop
-            select(func.coalesce(func.sum(OrderItem.quantity), 0))
-            .join(Order, OrderItem.order_id == Order.id)
+    for variant, product in variants:
+        # ── Net movement AFTER to_date (to back-derive closing stock as of to_date) ──
+        after_result = await db.execute(
+            select(func.coalesce(func.sum(StockTransaction.qty_change), 0))
             .where(
-                OrderItem.variant_id == variant.id,
-                Order.status.not_in([OrderStatus.cancelled, OrderStatus.refunded]),
+                StockTransaction.variant_id == variant.id,
+                func.date(StockTransaction.created_at) > to_date,
             )
         )
-        all_sold = int(all_sold_result.scalar() or 0)
+        net_after = int(after_result.scalar() or 0)
 
-        all_returned_result = await db.execute(
-            select(func.coalesce(func.sum(OrderItem.quantity), 0))
-            .join(Order, OrderItem.order_id == Order.id)
+        # variant.stock_qty is live/current — subtract anything that happened after to_date
+        closing_stock = variant.stock_qty - net_after
+
+        # ── In-range inward/outward (for the report columns) ──
+        inward_result = await db.execute(
+            select(func.coalesce(func.sum(StockTransaction.qty_change), 0))
             .where(
-                OrderItem.variant_id == variant.id,
-                Order.status.in_([OrderStatus.cancelled, OrderStatus.refunded]),
+                StockTransaction.variant_id == variant.id,
+                StockTransaction.qty_change > 0,
+                func.date(StockTransaction.created_at) >= from_date,
+                func.date(StockTransaction.created_at) <= to_date,
             )
         )
-        all_returned = int(all_returned_result.scalar() or 0)
+        inward_qty = int(inward_result.scalar() or 0)
 
-        # In-range movements (for the report columns)
-        sold_result = await db.execute(
-            select(func.coalesce(func.sum(OrderItem.quantity), 0))
-            .join(Order, OrderItem.order_id == Order.id)
+        outward_result = await db.execute(
+            select(func.coalesce(func.sum(StockTransaction.qty_change), 0))
             .where(
-                OrderItem.variant_id == variant.id,
-                Order.status.not_in([OrderStatus.cancelled, OrderStatus.refunded]),
-                func.date(Order.created_at) >= from_date,
-                func.date(Order.created_at) <= to_date,
+                StockTransaction.variant_id == variant.id,
+                StockTransaction.qty_change < 0,
+                func.date(StockTransaction.created_at) >= from_date,
+                func.date(StockTransaction.created_at) <= to_date,
             )
         )
-        sold_qty = int(sold_result.scalar() or 0)
+        outward_qty = abs(int(outward_result.scalar() or 0))
 
-        returned_result = await db.execute(
-            select(func.coalesce(func.sum(OrderItem.quantity), 0))
-            .join(Order, OrderItem.order_id == Order.id)
-            .where(
-                OrderItem.variant_id == variant.id,
-                Order.status.in_([OrderStatus.cancelled, OrderStatus.refunded]),
-                func.date(Order.created_at) >= from_date,
-                func.date(Order.created_at) <= to_date,
-            )
-        )
-        returned_qty = int(returned_result.scalar() or 0)
+        opening_stock = closing_stock - inward_qty + outward_qty
+        threshold = variant.low_stock_threshold or 5
 
-        current_stock = variant.stock_qty - all_sold + all_returned
-        threshold     = variant.low_stock_threshold or 5
+        total_sold_qty   += outward_qty
+        total_return_qty += inward_qty
 
-        total_sold_qty   += sold_qty
-        total_return_qty += returned_qty
-
-        if current_stock <= threshold:
+        if closing_stock <= threshold:
             low_stock_count += 1
 
         attrs = ", ".join(
@@ -694,17 +687,17 @@ async def stock_report(
         )
 
         items.append({
-    "id":           variant.id,
-    "product":      product.name,        # was product_name
-    "sku":          variant.sku,
-    "attributes":   attrs,
-    "inward":       returned_qty,        # was returned_qty
-    "outward":      sold_qty,            # was sold_qty
-    "closing":      current_stock,       # was current_stock
-    "opening":      current_stock + sold_qty - returned_qty,  # back-derived
-    "low_threshold": threshold,
-    "is_low_stock": current_stock <= threshold,
-})
+            "id":            variant.id,
+            "product":       product.name,
+            "sku":           variant.sku,
+            "attributes":    attrs,
+            "inward":        inward_qty,
+            "outward":       outward_qty,
+            "closing":       closing_stock,
+            "opening":       opening_stock,
+            "low_threshold": threshold,
+            "is_low_stock":  closing_stock <= threshold,
+        })
 
     return {
         "from_date":        from_date,
@@ -715,6 +708,8 @@ async def stock_report(
         "low_stock_count":  low_stock_count,
         "items":            items,
     }
+
+
 # ════════════════════════════════════════════════════════════════════════════
 #  STOCK VALUATION
 #  stock_qty * cost_price per variant, as of today (stock_qty is live)
@@ -723,7 +718,7 @@ async def stock_report(
 async def stock_value(
     as_of_date: date = Query(...),   # kept for API consistency; stock_qty is current
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     variants = (await db.execute(
         select(ProductVariant, Product)
@@ -769,3 +764,171 @@ async def stock_value(
         "total_value": float(round(total_value, 2)),
         "items":       items,
     }
+
+# ════════════════════════════════════════════════════════════════════════════
+#  FAST MOVING PRODUCTS
+# ════════════════════════════════════════════════════════════════════════════
+@router.get("/fast-moving")
+async def fast_moving_products(
+    from_date: date = Query(...),
+    to_date:   date = Query(...),
+    limit: int = Query(20, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
+):
+    from app.models.pos import POSSaleItem, POSSale, POSSaleStatus
+
+    # ── Web order quantities (confirmed/shipped/delivered only) ──
+    web_result = await db.execute(
+        select(
+            OrderItem.variant_id,
+            func.coalesce(func.sum(OrderItem.quantity), 0).label("qty"),
+        )
+        .join(Order, OrderItem.order_id == Order.id)
+        .where(
+            Order.status.not_in([OrderStatus.placed, OrderStatus.cancelled, OrderStatus.refunded]),
+            func.date(Order.created_at) >= from_date,
+            func.date(Order.created_at) <= to_date,
+        )
+        .group_by(OrderItem.variant_id)
+    )
+    web_qty = {row.variant_id: int(row.qty) for row in web_result.all()}
+
+    # ── POS sale quantities (completed only) ──
+    pos_result = await db.execute(
+        select(
+            POSSaleItem.variant_id,
+            func.coalesce(func.sum(POSSaleItem.quantity), 0).label("qty"),
+        )
+        .join(POSSale, POSSaleItem.pos_sale_id == POSSale.id)
+        .where(
+            POSSale.status == POSSaleStatus.completed,
+            func.date(POSSale.created_at) >= from_date,
+            func.date(POSSale.created_at) <= to_date,
+        )
+        .group_by(POSSaleItem.variant_id)
+    )
+    pos_qty = {row.variant_id: int(row.qty) for row in pos_result.all()}
+
+    # ── Merge ──
+    all_variant_ids = set(web_qty) | set(pos_qty)
+    if not all_variant_ids:
+        return {"from_date": from_date, "to_date": to_date, "items": []}
+
+    variants_result = await db.execute(
+        select(ProductVariant, Product)
+        .join(Product, ProductVariant.product_id == Product.id)
+        .where(ProductVariant.id.in_(all_variant_ids))
+    )
+    variant_map = {v.id: (v, p) for v, p in variants_result.all()}
+
+    items = []
+    for vid in all_variant_ids:
+        if vid not in variant_map:
+            continue
+        variant, product = variant_map[vid]
+        total_qty = web_qty.get(vid, 0) + pos_qty.get(vid, 0)
+        attrs = ", ".join(f"{k}: {v}" for k, v in (variant.selected_attributes or {}).items())
+        items.append({
+            "id": variant.id,
+            "product": product.name,
+            "sku": variant.sku,
+            "attributes": attrs,
+            "qty_sold": total_qty,
+            "web_qty": web_qty.get(vid, 0),
+            "pos_qty": pos_qty.get(vid, 0),
+            "current_stock": variant.stock_qty,
+        })
+
+    items.sort(key=lambda x: x["qty_sold"], reverse=True)
+    return {"from_date": from_date, "to_date": to_date, "items": items[:limit]}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  MOST PROFITABLE PRODUCTS
+# ════════════════════════════════════════════════════════════════════════════
+@router.get("/profitable")
+async def profitable_products(
+    from_date: date = Query(...),
+    to_date:   date = Query(...),
+    limit: int = Query(20, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
+):
+    from app.models.pos import POSSaleItem, POSSale, POSSaleStatus
+
+    # ── Web order revenue + qty (confirmed/shipped/delivered only) ──
+    web_result = await db.execute(
+        select(
+            OrderItem.variant_id,
+            func.coalesce(func.sum(OrderItem.quantity), 0).label("qty"),
+            func.coalesce(func.sum(OrderItem.line_total), 0).label("revenue"),
+        )
+        .join(Order, OrderItem.order_id == Order.id)
+        .where(
+            Order.status.not_in([OrderStatus.placed, OrderStatus.cancelled, OrderStatus.refunded]),
+            func.date(Order.created_at) >= from_date,
+            func.date(Order.created_at) <= to_date,
+        )
+        .group_by(OrderItem.variant_id)
+    )
+    web_data = {row.variant_id: (int(row.qty), Decimal(str(row.revenue))) for row in web_result.all()}
+
+    # ── POS sale revenue + qty (completed only) ──
+    pos_result = await db.execute(
+        select(
+            POSSaleItem.variant_id,
+            func.coalesce(func.sum(POSSaleItem.quantity), 0).label("qty"),
+            func.coalesce(func.sum(POSSaleItem.line_total), 0).label("revenue"),
+        )
+        .join(POSSale, POSSaleItem.pos_sale_id == POSSale.id)
+        .where(
+            POSSale.status == POSSaleStatus.completed,
+            func.date(POSSale.created_at) >= from_date,
+            func.date(POSSale.created_at) <= to_date,
+        )
+        .group_by(POSSaleItem.variant_id)
+    )
+    pos_data = {row.variant_id: (int(row.qty), Decimal(str(row.revenue))) for row in pos_result.all()}
+
+    all_variant_ids = set(web_data) | set(pos_data)
+    if not all_variant_ids:
+        return {"from_date": from_date, "to_date": to_date, "items": []}
+
+    variants_result = await db.execute(
+        select(ProductVariant, Product)
+        .join(Product, ProductVariant.product_id == Product.id)
+        .where(ProductVariant.id.in_(all_variant_ids))
+    )
+    variant_map = {v.id: (v, p) for v, p in variants_result.all()}
+
+    items = []
+    for vid in all_variant_ids:
+        if vid not in variant_map:
+            continue
+        variant, product = variant_map[vid]
+        w_qty, w_rev = web_data.get(vid, (0, Decimal("0")))
+        p_qty, p_rev = pos_data.get(vid, (0, Decimal("0")))
+        total_qty = w_qty + p_qty
+        total_revenue = w_rev + p_rev
+
+        cost_price = Decimal(str(variant.cost_price or 0))
+        total_cost = cost_price * total_qty
+        profit = total_revenue - total_cost
+        margin_pct = float((profit / total_revenue * 100).quantize(Decimal("0.01"))) if total_revenue > 0 else None
+
+        attrs = ", ".join(f"{k}: {v}" for k, v in (variant.selected_attributes or {}).items())
+        items.append({
+            "id": variant.id,
+            "product": product.name,
+            "sku": variant.sku,
+            "attributes": attrs,
+            "qty_sold": total_qty,
+            "revenue": float(round(total_revenue, 2)),
+            "cost": float(round(total_cost, 2)),
+            "profit": float(round(profit, 2)),
+            "margin_pct": margin_pct,
+        })
+
+    items.sort(key=lambda x: x["profit"], reverse=True)
+    return {"from_date": from_date, "to_date": to_date, "items": items[:limit]}

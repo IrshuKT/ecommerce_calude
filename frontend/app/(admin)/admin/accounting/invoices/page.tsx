@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
 import { useSettings } from "@/hooks/useSettings";
@@ -35,7 +35,7 @@ export default function InvoicesPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/invoices/?${statusFilter !== "all" ? `status=${statusFilter}` : ""}&limit=50`);
+      const res = await staffApi.get(`/invoices/?${statusFilter !== "all" ? `status=${statusFilter}` : ""}&limit=50`);
       setInvoices(Array.isArray(res.data) ? res.data : []);
     } catch { setInvoices([]); } finally { setLoading(false); }
   };
@@ -47,7 +47,7 @@ export default function InvoicesPage() {
   const confirmInvoice = async (invoiceNumber: string) => {
   if (!confirm(`Confirm invoice ${invoiceNumber}? This will deduct stock and post accounting entries. This cannot be undone.`)) return;
   try {
-    const res = await api.post(`/invoices/${encodeURIComponent(invoiceNumber)}/confirm`);
+    const res = await staffApi.post(`/invoices/${encodeURIComponent(invoiceNumber)}/confirm`);
     alert(`Invoice confirmed. Voucher: ${res.data.voucher_number}`);
     load();
   } catch (err: any) {

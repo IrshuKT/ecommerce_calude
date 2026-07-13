@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import { useStaffAuthStore } from "@/store/staffAuth";
 import PageHeader from "@/components/admin/PageHeader";
 import DataTable from "@/components/admin/DataTable";
@@ -37,7 +37,7 @@ export default function OrdersPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/orders/admin/all?${statusFilter !== "all" ? `status=${statusFilter}` : ""}`);
+      const res = await staffApi.get(`/orders/admin/all?${statusFilter !== "all" ? `status=${statusFilter}` : ""}`);
       setOrders(res.data?.items || []);
     } catch { setOrders([]); } finally { setLoading(false); }
   };
@@ -47,7 +47,7 @@ export default function OrdersPage() {
   const updateStatus = async (orderNumber: string, status: string) => {
     setUpdating(orderNumber);
     try {
-      const res = await api.patch(`/orders/${orderNumber}/status`, { status });
+      const res = await staffApi.patch(`/orders/${orderNumber}/status`, { status });
       const { invoice_result, invoice_number } = res.data;
 
       let msg = `Order ${orderNumber} updated to "${status}".`;

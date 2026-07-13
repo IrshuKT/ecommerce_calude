@@ -53,6 +53,8 @@ const reportGroups: { group: string; icon: string; items: { key: string; label: 
     items: [
       { key: "stock",      label: "Stock Report"    },
       { key: "stockvalue", label: "Stock Valuation" },
+      { key: "fastmoving",  label: "Fast Moving Products" },
+    { key: "profitable",  label: "Profitable Products"  },
     ],
   },
   {

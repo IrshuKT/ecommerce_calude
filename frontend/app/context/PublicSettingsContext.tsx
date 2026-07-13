@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useContext, useEffect, useState } from "react";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 
 interface PublicSettings {
   company_name: string;
@@ -24,7 +24,7 @@ export function PublicSettingsProvider({ children }: { children: React.ReactNode
   const [settings, setSettings] = useState<PublicSettings>(defaults);
 
   useEffect(() => {
-    api.get("/settings/")
+    staffApi.get("/settings/")
       .then(r => setSettings({ ...defaults, ...r.data }))
       .catch(() => {});
   }, []);

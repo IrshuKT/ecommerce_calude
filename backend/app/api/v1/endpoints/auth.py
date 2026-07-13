@@ -8,10 +8,13 @@ from typing import Optional
 from app.db.session import get_db
 from app.models.models import User, UserRole
 from app.core.security import verify_password, get_password_hash, create_access_token, decode_token
+from app.models.models import InternalUser, InternalRole
+from app.core.security import verify_password, get_password_hash, create_access_token, decode_token
+
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
-
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
 class RegisterRequest(BaseModel):
     name: str
@@ -55,6 +58,26 @@ async def get_admin_user(current_user: User = Depends(get_current_user)) -> User
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
 
+async def get_optional_current_user(
+    token: Optional[str] = Depends(oauth2_scheme_optional),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[User]:
+    """
+    Like get_current_user, but returns None instead of raising when there's
+    no token, an invalid token, or the token belongs to a staff (internal) user.
+    Use on endpoints that need to allow EITHER staff OR customer access.
+    """
+    if not token:
+        return None
+    payload = decode_token(token)
+    if not payload or payload.get("type") == "internal":
+        return None
+    result = await db.execute(select(User).where(User.id == int(payload.get("sub"))))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        return None
+    return user
+
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
 async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
@@ -65,7 +88,8 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     user = User(name=payload.name, email=payload.email, phone=payload.phone,
                 hashed_password=get_password_hash(payload.password), role=UserRole.customer)
     db.add(user)
-    await db.flush()
+    await db.commit()
+    await db.refresh(user)
     token = create_access_token({"sub": str(user.id)})
     return TokenResponse(access_token=token, user_id=user.id, name=user.name, role=user.role)
 
@@ -154,3 +178,42 @@ async def promote_to_admin(
         raise HTTPException(status_code=404, detail="User not found")
     target.role = UserRole.admin
     return {"message": f"{target.name} promoted to admin"}
+
+class StaffTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    staff_id: int
+    name: str
+    role: str
+
+
+@router.post("/staff-login", response_model=StaffTokenResponse)
+async def staff_login(form: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(InternalUser).where(
+            (InternalUser.email == form.username) | (InternalUser.phone == form.username)
+        )
+    )
+    staff = result.scalar_one_or_none()
+    if not staff or not staff.is_active or not verify_password(form.password, staff.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    token = create_access_token({"sub": str(staff.id), "type": "internal"})
+    return StaffTokenResponse(
+        access_token=token,
+        staff_id=staff.id,
+        name=staff.name,
+        role=staff.role.value,
+    )
+
+async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)) -> User:
+    payload = decode_token(token)
+    print(f"[DEBUG] payload: {payload}")
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    result = await db.execute(select(User).where(User.id == int(payload.get("sub"))))
+    user = result.scalar_one_or_none()
+    print(f"[DEBUG] user found: {user}")
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found or inactive")
+    return user

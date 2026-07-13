@@ -6,7 +6,7 @@ from decimal import Decimal
 from datetime import datetime
 from app.db.session import get_db
 from app.models.models import Coupon
-from app.api.v1.endpoints.auth import get_admin_user, get_current_user
+from app.api.v1.endpoints.shared_auth import require_roles, ActingUser
 from app.models.models import User
 
 router = APIRouter()
@@ -38,12 +38,12 @@ async def validate_coupon(payload: ValidateCouponRequest, db: AsyncSession = Dep
     return {"discount_amount": round(discount, 2), "coupon_type": coupon.coupon_type, "value": float(coupon.value), "description": coupon.description}
 
 @router.get("/")
-async def list_coupons(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_admin_user)):
+async def list_coupons(db: AsyncSession = Depends(get_db), current_user: ActingUser = Depends(require_roles("admin", "manager"))):
     result = await db.execute(select(Coupon).order_by(Coupon.created_at.desc()))
     return result.scalars().all()
 
 @router.post("/", status_code=201)
-async def create_coupon(payload: dict, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_admin_user)):
+async def create_coupon(payload: dict, db: AsyncSession = Depends(get_db), current_user: ActingUser = Depends(require_roles("admin", "manager"))):
     coupon = Coupon(**{k: v for k, v in payload.items() if hasattr(Coupon, k)})
     db.add(coupon)
     await db.flush()

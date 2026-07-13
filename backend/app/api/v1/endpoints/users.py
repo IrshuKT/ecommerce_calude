@@ -8,7 +8,8 @@ from typing import Optional
 
 from app.db.session import get_db
 from app.models.models import User, Address
-from app.api.v1.endpoints.auth import get_current_user, get_admin_user
+from app.api.v1.endpoints.auth import get_current_user
+from app.api.v1.endpoints.shared_auth import get_acting_staff_user, require_roles, ActingUser
 from app.core.security import get_password_hash
 
 router = APIRouter()
@@ -19,7 +20,7 @@ router = APIRouter()
 @router.get("/")
 async def list_users(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin")),
     search: Optional[str] = None,
     trade_only: bool = False,
     page: int = Query(1, ge=1),
@@ -53,7 +54,7 @@ class AdminCreateCustomerRequest(BaseModel):
 async def create_customer(
     payload: AdminCreateCustomerRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin")),
 ):
     """Manual customer creation by shop/admin — separate from self-registration."""
     if (await db.execute(select(User).where(User.email == payload.email))).scalar_one_or_none():
@@ -85,7 +86,7 @@ async def create_customer(
 async def approve_trade(
     user_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin")),
 ):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -102,7 +103,7 @@ async def approve_trade(
 async def revoke_trade(
     user_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin")),
 ):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -118,7 +119,7 @@ async def revoke_trade(
 async def toggle_active(
     user_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
+    current_user: ActingUser = Depends(require_roles("admin")),
 ):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -228,7 +229,7 @@ async def delete_address(address_id: int, db: AsyncSession = Depends(get_db), cu
 # ── Single user lookup (must stay LAST — catch-all path) ─────────────────────
 
 @router.get("/{user_id}")
-async def get_user(user_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_admin_user)):
+async def get_user(user_id: int, db: AsyncSession = Depends(get_db), current_user: ActingUser = Depends(require_roles("admin"))):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:

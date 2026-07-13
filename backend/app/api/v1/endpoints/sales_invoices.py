@@ -10,9 +10,11 @@ from datetime import date
 from app.db.session import get_db
 from app.models.accounting import SalesInvoice, SalesInvoiceItem, InvoiceStatus
 from app.models.models import User, OrderItem, ProductVariant, Product
-from app.api.v1.endpoints.auth import get_current_user, get_admin_user
+from app.api.v1.endpoints.auth import get_current_user,  oauth2_scheme
 from app.services.journal_service import post_sales_invoice_journal, inv_number
-from app.api.v1.endpoints.shared_auth import get_acting_staff_user, require_roles, ActingUser
+from app.api.v1.endpoints.shared_auth import get_optional_staff_user, require_roles, ActingUser
+from app.core.security import decode_token
+
 
 router = APIRouter()
 
@@ -266,6 +268,34 @@ async def cancel_invoice(invoice_number: str,
 # ══════════════════════════════════════════════════════════════════════════════
 # GENERIC CATCH-ALL — MUST BE LAST
 # ══════════════════════════════════════════════════════════════════════════════
+
+async def get_optional_current_user(token: Optional[str] = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)) -> Optional[User]:
+    if not token:
+        return None
+    payload = decode_token(token)
+    if not payload or payload.get("type") == "internal":
+        return None
+    result = await db.execute(select(User).where(User.id == int(payload.get("sub"))))
+    return result.scalar_one_or_none()
+
+
+@router.get("/{invoice_number:path}")
+async def get_invoice(
+    invoice_number: str,
+    db: AsyncSession = Depends(get_db),
+    staff: Optional[ActingUser] = Depends(get_optional_staff_user),
+    customer: Optional[User] = Depends(get_optional_current_user),
+):
+    result = await db.execute(select(SalesInvoice).options(selectinload(SalesInvoice.items)).where(SalesInvoice.invoice_number == invoice_number))
+    invoice = result.scalar_one_or_none()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    if staff and staff.role in ("admin", "manager", "sales"):
+        return invoice
+    if customer and invoice.customer_id == customer.id:
+        return invoice
+    raise HTTPException(status_code=403, detail="Access denied")
 
 @router.get("/{invoice_number:path}")
 async def get_invoice(invoice_number: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):

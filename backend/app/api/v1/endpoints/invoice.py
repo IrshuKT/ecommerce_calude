@@ -11,8 +11,7 @@ from datetime import date
 from app.db.session import get_db
 from app.models.accounting import SalesInvoice, SalesInvoiceItem, InvoiceStatus
 from app.models.models import User, ProductVariant, Product
-from app.api.v1.endpoints.auth import get_admin_user
-from app.services.journal_service import post_sales_invoice_journal, inv_number
+from app.services.journal_service import post_sales_invoice_journal, inv_numbe
 
 router = APIRouter()
 

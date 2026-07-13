@@ -4,7 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
 from typing import Optional
-from app.api.v1.endpoints.auth import get_current_user, get_admin_user
+
+from app.api.v1.endpoints.shared_auth import require_roles, ActingUser
 from app.db.session import get_db
 from app.models.models import User, UserRole
 from app.core.security import verify_password, get_password_hash, create_access_token, decode_token
@@ -21,10 +22,10 @@ class RestoreExistingRequest(BaseModel):
     confirm: str
 
 
-router.post("/backup/restore-existing")
+@router.post("/backup/restore-existing")
 async def restore_existing_backup(
     payload: RestoreExistingRequest,
-    current_admin: User = Depends(get_admin_user),
+    current_admin: ActingUser = Depends(require_roles("admin")),
     db: AsyncSession = Depends(get_db),   # add this explicitly
 ):
     if payload.confirm != "RESTORE":
