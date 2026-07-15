@@ -71,7 +71,7 @@ export default function AccountDashboard() {
               <p style={{ fontSize: 13, color: "#3b82f6", margin: 0 }}>Get exclusive pricing. Contact us to get approved.</p>
             </div>
           </div>
-          <a href={`mailto:${settings.email || "hello@glassstore.in"}`} 
+          <a href={`mailto:${settings.email || "hello@epozy.in"}`} 
   style={{ fontSize: 13, color: "#0284c7", background: "white", padding: "6px 14px", borderRadius: 6, border: "1px solid #bfdbfe", textDecoration: "none", fontWeight: 500 }}>
   Contact Us
 </a>

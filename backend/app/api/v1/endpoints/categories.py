@@ -26,6 +26,19 @@ async def list_categories(db: AsyncSession = Depends(get_db)):
     cats = result.scalars().all()
     return [{"id": c.id, "name": c.name, "slug": c.slug, "parent_id": c.parent_id} for c in cats]
 
+@router.get("/tree")
+async def get_category_tree(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Category).where(Category.is_active == True).order_by(Category.sort_order, Category.name)
+    )
+    cats = result.scalars().all()
+    by_id = {c.id: {"id": c.id, "name": c.name, "slug": c.slug, "children": []} for c in cats}
+    roots = []
+    for c in cats:
+        node = by_id[c.id]
+        (by_id[c.parent_id]["children"] if c.parent_id and c.parent_id in by_id else roots).append(node)
+    return roots
+
 
 @router.post("/", status_code=201)
 async def create_category(
@@ -52,3 +65,4 @@ async def delete_category(
     if not cat:
         raise HTTPException(status_code=404, detail="Category not found")
     cat.is_active = False
+    await db.commit()

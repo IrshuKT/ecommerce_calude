@@ -77,7 +77,7 @@ export default function Navbar() {
             }
           </div>
           <span style={{ fontSize: 17, fontWeight: 600, color: "#1e293b", whiteSpace: "nowrap" }}>
-            {settings.company_name || "Glass"}<span style={{ color: "#0284c7" }}>{settings.company_name ? "" : "Store"}</span>
+            {settings.company_name || ""}<span style={{ color: "#0284c7" }}>{settings.company_name ? "" : " Epozy"}</span>
           </span>
         </Link>
 

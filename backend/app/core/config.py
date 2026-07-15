@@ -3,8 +3,8 @@ from typing import Optional
 
 
 class Settings(BaseSettings):
-    APP_NAME: str = "GlassStore"
-    APP_VERSION: str = "1.0.0"
+    APP_NAME: str = "Epozy"
+    APP_VERSION: str = "2.0.0"
     DEBUG: bool = False
     SECRET_KEY: str = "change-this-in-production"
     ALGORITHM: str = "HS256"
@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     SMTP_PORT: int = 587
     SMTP_USER: Optional[str] = None
     SMTP_PASSWORD: Optional[str] = None
-    FROM_EMAIL: str = "noreply@glassstore.in"
+    FROM_EMAIL: str = "noreply@epozy.in"
 
     UPLOAD_DIR: str = "uploads"
     MAX_IMAGE_SIZE_MB: int = 5

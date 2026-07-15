@@ -276,7 +276,7 @@ export default function HomePage() {
             </div>
           )}
           <h1 style={{ fontSize: 48, fontWeight: 700, margin: "0 0 16px", lineHeight: 1.15 }}>
-            {settings.company_name || "KT'S Hub"}<br /> Online Shop
+            {settings.company_name || "Epozy"}<br /> Online Shop
           </h1>
           <p style={{ fontSize: 18, opacity: 0.9, margin: "0 0 32px", lineHeight: 1.6 }}>
             {settings.tagline || "Clear glass, mirrors, frosted panels and more."}

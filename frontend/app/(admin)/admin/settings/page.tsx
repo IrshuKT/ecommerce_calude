@@ -172,7 +172,7 @@ export default function SettingsPage() {
           </div>
           <div>
             <label style={lbl}>Website</label>
-            <input style={inp} value={form.website || ""} onChange={e => set("website", e.target.value)} placeholder="https://glassstore.in" />
+            <input style={inp} value={form.website || ""} onChange={e => set("website", e.target.value)} placeholder="https://epozy.in" />
           </div>
         </div>
       </div>

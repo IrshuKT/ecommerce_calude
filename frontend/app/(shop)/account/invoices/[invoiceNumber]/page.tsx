@@ -41,7 +41,7 @@ export default function CustomerInvoicePage() {
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 32 }}>
           <div>
             {company.logo_url && <img src={`${API_BASE}${company.logo_url}`} alt="Logo" style={{ height: 50, marginBottom: 8, objectFit: "contain" }} />}
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#1e293b", margin: "0 0 4px" }}>{company.company_name || "GlassStore"}</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#1e293b", margin: "0 0 4px" }}>{company.company_name || "Epozy"}</h2>
             {company.address_line1 && <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 2px" }}>{company.address_line1}</p>}
             {company.city && <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 2px" }}>{company.city}, {company.state} — {company.pincode}</p>}
             {company.gstin && <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 2px" }}>GSTIN: {company.gstin}</p>}

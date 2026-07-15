@@ -22,7 +22,7 @@ export default function Logo() {
         }
       </div>
       <span style={{ fontSize: 17, fontWeight: 600, color: "#1e293b" }}>
-        {settings.company_name || "GlassStore"}
+        {settings.company_name || "Epozy"}
       </span>
     </div>
   );

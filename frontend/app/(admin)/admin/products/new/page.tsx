@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import api from "@/lib/api";
+import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 
 interface AttrValue { value: string; }
@@ -22,7 +22,6 @@ interface Variant {
 export default function AddProductPage() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
-  const [categories, setCategories] = useState<any[]>([]);
   const [newCatName, setNewCatName] = useState("");
   const [addingCat, setAddingCat] = useState(false);
   const [showCatInput, setShowCatInput] = useState(false);
@@ -35,21 +34,59 @@ export default function AddProductPage() {
   const [simpleTradePrice, setSimpleTradePrice] = useState("");
   const [simpleCostPrice, setSimpleCostPrice] = useState("");
   const [simpleStock, setSimpleStock] = useState("0");
+  const [tree, setTree] = useState<any[]>([]);
+  const [selectedPath, setSelectedPath] = useState<string[]>([]);
 
+  useEffect(() => {
+  staffApi.get("/categories/tree").then(r => setTree(r.data || []));
+}, []);
+
+  const getOptionsAtLevel = (level: number) => {
+  let nodes = tree;
+  for (let i = 0; i < level; i++) {
+    const chosen = nodes.find(n => String(n.id) === selectedPath[i]);
+    if (!chosen) return [];
+    nodes = chosen.children;
+  }
+  return nodes;
+};
+
+const onSelectAtLevel = (level: number, id: string) => {
+  const newPath = [...selectedPath.slice(0, level), id];
+  setSelectedPath(newPath);
+  // leaf = deepest selected node with no children
+  const options = getOptionsAtLevel(level);
+  const node = options.find(n => String(n.id) === id);
+  setInfo({ ...info, category_id: id }); // always store the deepest chosen one
+  if (!node?.children?.length) return; // no further levels
+};
   const isService = itemType === "service";
 
-  useEffect(() => { api.get("/categories/").then(r => setCategories(r.data || [])).catch(() => {}); }, []);
-
   const addCategory = async () => {
-    if (!newCatName.trim()) return;
-    setAddingCat(true);
-    try {
-      const res = await api.post("/categories/", { name: newCatName });
-      setCategories([...categories, res.data]);
-      setInfo({ ...info, category_id: String(res.data.id) });
-      setNewCatName(""); setShowCatInput(false);
-    } catch { alert("Failed to add category"); } finally { setAddingCat(false); }
-  };
+  if (!newCatName.trim()) return;
+  setAddingCat(true);
+  try {
+    const parentId = selectedPath[selectedPath.length - 1] || null;
+    const res = await staffApi.post("/categories/", { name: newCatName, parent_id: parentId ? parseInt(parentId) : null });
+    const newNode = { id: res.data.id, name: res.data.name, slug: res.data.slug, children: [] };
+
+    if (!parentId) {
+      setTree([...tree, newNode]);
+    } else {
+      // deep-update: find parent node in tree and push child
+      const addChild = (nodes: any[]): any[] => nodes.map(n =>
+        String(n.id) === parentId ? { ...n, children: [...n.children, newNode] }
+        : { ...n, children: addChild(n.children) }
+      );
+      setTree(addChild(tree));
+    }
+    setInfo({ ...info, category_id: String(res.data.id) });
+    setSelectedPath([...selectedPath, String(res.data.id)]);
+    setNewCatName(""); setShowCatInput(false);
+  } catch { alert("Failed to add category"); } finally { setAddingCat(false); }
+};
+  
+
 
   const addAttr = () => setAttrs([...attrs, { name: "", display_name: "", values: [{ value: "" }] }]);
   const removeAttr = (i: number) => { const a = [...attrs]; a.splice(i, 1); setAttrs(a); setVariants([]); };
@@ -121,7 +158,7 @@ export default function AddProductPage() {
 
     setSaving(true);
     try {
-      const res = await api.post("/products/", {
+      const res = await staffApi.post("/products/", {
         name: info.name, short_description: info.short_description,
         description: info.description,
         category_id: info.category_id ? parseInt(info.category_id) : null,
@@ -193,23 +230,25 @@ export default function AddProductPage() {
           </div>
 
           <div>
-            <label style={lbl}>Category</label>
-            {!showCatInput ? (
-              <div style={{ display: "flex", gap: 6 }}>
-                <select style={inp} value={info.category_id} onChange={e => setInfo({ ...info, category_id: e.target.value })}>
-                  <option value="">Select category</option>
-                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-                <button onClick={() => setShowCatInput(true)} style={{ padding: "0 10px", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", cursor: "pointer", fontSize: 16 }}>+</button>
-              </div>
-            ) : (
-              <div style={{ display: "flex", gap: 6 }}>
-                <input style={inp} autoFocus placeholder="New category name" value={newCatName} onChange={e => setNewCatName(e.target.value)} onKeyDown={e => e.key === "Enter" && addCategory()} />
-                <button onClick={addCategory} disabled={addingCat} style={{ padding: "0 12px", borderRadius: 6, background: "#0284c7", color: "white", border: "none", cursor: "pointer", fontSize: 13 }}>{addingCat ? "..." : "Add"}</button>
-                <button onClick={() => setShowCatInput(false)} style={{ padding: "0 10px", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#94a3b8", cursor: "pointer" }}>✕</button>
-              </div>
-            )}
-          </div>
+  <label style={lbl}>Category</label>
+  {Array.from({ length: selectedPath.length + 1 }).map((_, level) => {
+    const options = getOptionsAtLevel(level);
+    if (level > 0 && options.length === 0) return null;
+    return (
+      <select key={level} style={{ ...inp, marginBottom: 6 }} value={selectedPath[level] || ""} onChange={e => onSelectAtLevel(level, e.target.value)}>
+        <option value="">{level === 0 ? "Select category" : "Select sub-category"}</option>
+        {options.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </select>
+    );
+  })}
+  {!showCatInput
+    ? <button onClick={() => setShowCatInput(true)} style={{ padding: "0 10px", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#64748b", cursor: "pointer", fontSize: 16 }}>+ Add category</button>
+    : <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+        <input style={inp} autoFocus placeholder="New category name" value={newCatName} onChange={e => setNewCatName(e.target.value)} onKeyDown={e => e.key === "Enter" && addCategory()} />
+        <button onClick={addCategory} disabled={addingCat} style={{ padding: "0 12px", borderRadius: 6, background: "#0284c7", color: "white", border: "none", cursor: "pointer", fontSize: 13 }}>{addingCat ? "..." : "Add"}</button>
+        <button onClick={() => setShowCatInput(false)} style={{ padding: "0 10px", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", color: "#94a3b8", cursor: "pointer" }}>✕</button>
+      </div>}
+</div>
 
           <div>
             <label style={lbl}>Price Type *</label>

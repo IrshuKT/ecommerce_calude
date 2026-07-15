@@ -62,7 +62,7 @@ export default function InvoiceDetailPage() {
           </div>
         )}
         <span style={{ fontSize: 20, fontWeight: 700, color: "#1e293b" }}>
-          {settings?.company_name || "GlassStore"}
+          {settings?.company_name || "Epozy"}
         </span>
       </div>
       <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 2px" }}>

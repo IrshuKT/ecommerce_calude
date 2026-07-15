@@ -298,7 +298,7 @@ class OrderTracking(Base):
 class CompanySettings(Base):
     __tablename__ = "company_settings"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    company_name: Mapped[str] = mapped_column(String(200), default="GlassStore")
+    company_name: Mapped[str] = mapped_column(String(200), default="Epozy")
     tagline: Mapped[Optional[str]] = mapped_column(String(300))
     logo_url: Mapped[Optional[str]] = mapped_column(String(500))
     email: Mapped[Optional[str]] = mapped_column(String(150))

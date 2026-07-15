@@ -123,7 +123,7 @@ export default function CheckoutPage() {
         key: rzRes.data.key,
         amount: rzRes.data.amount,
         currency: "INR",
-        name: "GlassStore",
+        name: "Epozy",
         description: `Order ${orderNumber}`,
         order_id: rzRes.data.razorpay_order_id,
         handler: async (response: any) => {

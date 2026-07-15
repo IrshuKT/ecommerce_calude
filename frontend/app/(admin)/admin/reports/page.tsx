@@ -5,8 +5,6 @@ import staffApi from "@/lib/staffApi";
 import Link from "next/link";
 import PageHeader from "@/components/admin/PageHeader";
 
-// ─── menu structure (used for breadcrumb/title lookup only — the actual nav
-// now lives in AdminSidebar under the expandable "Reports" item) ────────────
 const MENU = [
   {
     group: "Accounting",
@@ -25,7 +23,7 @@ const MENU = [
       { key: "stock",      label: "Stock Report"    },
       { key: "stockvalue", label: "Stock Valuation" },
       { key: "fastmoving",  label: "Fast Moving Products" },
-    { key: "profitable",  label: "Profitable Products"  },
+      { key: "profitable",  label: "Profitable Products"  },
     ],
   },
   {
@@ -40,9 +38,23 @@ const MENU = [
 const isGSTTab   = (k: string) => k === "gstr1" || k === "gstr3b";
 const isLedger   = (k: string) => k === "ledger";
 const isAsOfOnly = (k: string) => k === "tb" || k === "bs" || k === "stockvalue";
+// NEW: which reports get the category/sub-category/product filter row
+const isInventoryReport = (k: string) =>
+  k === "stock" || k === "stockvalue" || k === "fastmoving" || k === "profitable";
 
 const fmt = (n: any) =>
   `₹${parseFloat(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+
+// NEW: compact filter styles (used for dates + category/product selects)
+const compactInput = {
+  padding: "4px 8px",
+  fontSize: 12,
+  borderRadius: 6,
+  border: "1px solid #e2e8f0",
+  outline: "none",
+  height: 30,
+} as const;
+const compactLabel = { fontSize: 10, color: "#94a3b8", marginBottom: 2, display: "block" } as const;
 
 // ─── page ────────────────────────────────────────────────────────────────────
 function ReportsPageInner() {
@@ -62,20 +74,51 @@ function ReportsPageInner() {
   const [loading,   setLoading]   = useState(false);
   const [accounts,  setAccounts]  = useState<any[]>([]);
 
-  // Clear stale report data whenever the selected report changes (navigated
-  // from the sidebar), so switching reports doesn't briefly show the old table.
+  // NEW: category → sub-category → product filter state
+  const [catTree,   setCatTree]   = useState<any[]>([]);
+  const [catPath,   setCatPath]   = useState<string[]>([]);
+  const [products,  setProducts]  = useState<any[]>([]);
+  const [productId, setProductId] = useState("");
+
+  // Clear stale report data whenever the selected report changes.
   useEffect(() => {
     setData(null);
   }, [active]);
 
   useEffect(() => {
     staffApi.get("/accounting/accounts")
-      .then((r) => {
-        console.log("accounts:", r.data); // ← check browser console
-        setAccounts(r.data?.accounts ?? []);
-      })
+      .then((r) => setAccounts(r.data?.accounts ?? []))
       .catch((e) => console.error("accounts fetch failed:", e));
   }, []);
+
+  // NEW: load category tree once
+  useEffect(() => {
+    staffApi.get("/categories/tree")
+      .then((r) => setCatTree(r.data || []))
+      .catch(() => {});
+  }, []);
+
+  // NEW: cascading category helpers
+  const getCatOptions = (level: number) => {
+    let nodes = catTree;
+    for (let i = 0; i < level; i++) {
+      const chosen = nodes.find((n) => String(n.id) === catPath[i]);
+      if (!chosen) return [];
+      nodes = chosen.children;
+    }
+    return nodes;
+  };
+
+  const onCatSelect = (level: number, id: string) => {
+    const newPath = id ? [...catPath.slice(0, level), id] : catPath.slice(0, level);
+    setCatPath(newPath);
+    setProductId("");
+    setProducts([]);
+    if (!id) return;
+    staffApi.get(`/products/?category_id=${id}`)
+      .then((r) => setProducts(r.data?.items ?? r.data ?? []))
+      .catch(() => {});
+  };
 
   const fetchReport = async () => {
     setLoading(true);
@@ -84,6 +127,13 @@ function ReportsPageInner() {
       const params = `from_date=${fromDate}&to_date=${toDate}`;
       const asOf   = `as_of_date=${toDate}`;
       const gst    = `month=${month}&year=${year}`;
+
+      // NEW: inventory-report filters
+      const catFilter  = isInventoryReport(active) && catPath.length
+        ? `&category_id=${catPath[catPath.length - 1]}` : "";
+      const prodFilter = isInventoryReport(active) && productId
+        ? `&product_id=${productId}` : "";
+
       let res;
 
       if      (active === "pl")         res = await staffApi.get(`/reports/profit-loss?${params}`);
@@ -91,11 +141,11 @@ function ReportsPageInner() {
       else if (active === "bs")         res = await staffApi.get(`/reports/balance-sheet?${asOf}`);
       else if (active === "cashbook")   res = await staffApi.get(`/reports/cash-book?${params}`);
       else if (active === "daybook")    res = await staffApi.get(`/reports/day-book?${params}`);
-      else if (active === "ledger") res = await staffApi.get(`/reports/ledger?account_code=${accountId}&${params}`);
-      else if (active === "stock")      res = await staffApi.get(`/reports/stock?${params}`);
-      else if (active === "stockvalue") res = await staffApi.get(`/reports/stock-value?${asOf}`);
-      else if (active === "fastmoving") res = await staffApi.get(`/reports/fast-moving?${params}`);
-      else if (active === "profitable") res = await staffApi.get(`/reports/profitable?${params}`);
+      else if (active === "ledger")     res = await staffApi.get(`/reports/ledger?account_code=${accountId}&${params}`);
+      else if (active === "stock")      res = await staffApi.get(`/reports/stock?${params}${catFilter}${prodFilter}`);
+      else if (active === "stockvalue") res = await staffApi.get(`/reports/stock-value?${asOf}${catFilter}${prodFilter}`);
+      else if (active === "fastmoving") res = await staffApi.get(`/reports/fast-moving?${params}${catFilter}${prodFilter}`);
+      else if (active === "profitable") res = await staffApi.get(`/reports/profitable?${params}${catFilter}${prodFilter}`);
       else if (active === "gstr1")      res = await staffApi.get(`/gst/gstr1?${gst}`);
       else if (active === "gstr3b")     res = await staffApi.get(`/gst/gstr3b?${gst}`);
 
@@ -121,41 +171,41 @@ function ReportsPageInner() {
       <PageHeader title={activeLabel} subtitle="Generate and view financial reports" />
 
       {/* Filters */}
-      <div className="card" style={{ padding: 20, marginBottom: 24 }}>
-        <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+      <div className="card" style={{ padding: 14, marginBottom: 24 }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
 
           {isGSTTab(active) ? (
             <>
               <div>
-                <label className="label">Month</label>
-                <select className="input-field" style={{ width: 140 }} value={month}
+                <label style={compactLabel}>Month</label>
+                <select style={{ ...compactInput, width: 120 }} value={month}
                   onChange={(e) => setMonth(parseInt(e.target.value))}>
                   {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
                     .map((m, i) => <option key={i} value={i+1}>{m}</option>)}
                 </select>
               </div>
               <div>
-                <label className="label">Year</label>
-                <input type="number" className="input-field" style={{ width: 100 }}
+                <label style={compactLabel}>Year</label>
+                <input type="number" style={{ ...compactInput, width: 90 }}
                   value={year} onChange={(e) => setYear(parseInt(e.target.value))} />
               </div>
             </>
           ) : isAsOfOnly(active) ? (
             <div>
-              <label className="label">As of Date</label>
-              <input type="date" className="input-field" style={{ width: 160 }}
+              <label style={compactLabel}>As of Date</label>
+              <input type="date" style={{ ...compactInput, width: 140 }}
                 value={toDate} onChange={(e) => setToDate(e.target.value)} />
             </div>
           ) : (
             <>
               <div>
-                <label className="label">From Date</label>
-                <input type="date" className="input-field" style={{ width: 160 }}
+                <label style={compactLabel}>From Date</label>
+                <input type="date" style={{ ...compactInput, width: 140 }}
                   value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
               </div>
               <div>
-                <label className="label">To Date</label>
-                <input type="date" className="input-field" style={{ width: 160 }}
+                <label style={compactLabel}>To Date</label>
+                <input type="date" style={{ ...compactInput, width: 140 }}
                   value={toDate} onChange={(e) => setToDate(e.target.value)} />
               </div>
             </>
@@ -163,8 +213,8 @@ function ReportsPageInner() {
 
           {isLedger(active) && (
             <div>
-              <label className="label">Account</label>
-              <select className="input-field" style={{ width: 260 }} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+              <label style={compactLabel}>Account</label>
+              <select style={{ ...compactInput, width: 240 }} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
                 <option value="">— Select Account —</option>
                 {["asset","liability","equity","income","expense"].map((type) => {
                   const group = accounts.filter((a: any) => a.account_type === type);
@@ -183,7 +233,43 @@ function ReportsPageInner() {
             </div>
           )}
 
-          <button className="btn-primary" onClick={fetchReport} disabled={loading}>
+          {/* NEW: Category → Sub-category → Product filter, inline, only for inventory reports */}
+          {isInventoryReport(active) && (
+            <>
+              {Array.from({ length: catPath.length + 1 }).map((_, level) => {
+                const options = getCatOptions(level);
+                if (level > 0 && options.length === 0) return null;
+                return (
+                  <div key={level}>
+                    <label style={compactLabel}>{level === 0 ? "Category" : "Sub-category"}</label>
+                    <select
+                      style={{ ...compactInput, width: 130 }}
+                      value={catPath[level] || ""}
+                      onChange={(e) => onCatSelect(level, e.target.value)}
+                    >
+                      <option value="">All</option>
+                      {options.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                );
+              })}
+              {products.length > 0 && (
+                <div>
+                  <label style={compactLabel}>Product</label>
+                  <select
+                    style={{ ...compactInput, width: 160 }}
+                    value={productId}
+                    onChange={(e) => setProductId(e.target.value)}
+                  >
+                    <option value="">All products</option>
+                    {products.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+              )}
+            </>
+          )}
+
+          <button className="btn-primary" onClick={fetchReport} disabled={loading} style={{ height: 30, padding: "0 16px", fontSize: 13 }}>
             {loading ? "Loading…" : "Generate"}
           </button>
         </div>
@@ -275,9 +361,9 @@ function SummaryCards({ cards }: { cards: { label: string; value: any; color?: s
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14, marginBottom: 24 }}>
       {cards.map((c) => (
-        <div key={c.label} style={{ padding: "14px 18px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
-          <p style={{ fontSize: 11, color: "#94a3b8", margin: "0 0 4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>{c.label}</p>
-          <p style={{ fontSize: 17, fontWeight: 700, margin: 0, color: c.color || "#1e293b" }}>{c.value}</p>
+        <div key={c.label} style={{ padding: "10px 16px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <p style={{ fontSize: 11, color: "#94a3b8", margin: 0, textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" }}>{c.label}</p>
+          <p style={{ fontSize: 15, fontWeight: 700, margin: 0, color: c.color || "#1e293b", whiteSpace: "nowrap" }}>{c.value}</p>
         </div>
       ))}
     </div>
@@ -484,12 +570,12 @@ function StockValueReport({ data }: any) {
       <ReportTable
         headers={["Product", "SKU", "Attributes", "Qty", "Cost Price", "Retail Price", "Value"]}
         rows={(data.items ?? []).map((item: any) => [
-          item.product_name,        
+          item.product_name,
           item.sku,
-          item.attributes || "—",  
+          item.attributes || "—",
           item.qty,
-          fmt(item.cost_price),     
-          fmt(item.retail_price),  
+          fmt(item.cost_price),
+          fmt(item.retail_price),
           fmt(item.value),
         ])}
         footer={["", "", "", "", "", "Total", fmt(data.total_value)]}
@@ -497,6 +583,7 @@ function StockValueReport({ data }: any) {
     </div>
   );
 }
+
 function FastMovingReport({ data }: any) {
   return (
     <div>

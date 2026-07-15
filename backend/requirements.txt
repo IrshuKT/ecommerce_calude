@@ -16,3 +16,4 @@ emails==0.6
 celery==5.4.0
 redis==5.0.4
 python-slugify==8.0.4
+apscheduler==3.10.4

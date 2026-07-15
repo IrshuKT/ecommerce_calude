@@ -27,7 +27,7 @@ export default function RegisterPage() {
     <div>
       <div style={{ marginBottom: 32 }}>
         <h2 style={{ fontSize: 24, fontWeight: 600, color: "#1e293b", margin: 0 }}>Create account</h2>
-        <p style={{ color: "#64748b", fontSize: 14, marginTop: 4 }}>Start shopping glass materials</p>
+        <p style={{ color: "#64748b", fontSize: 14, marginTop: 4 }}>Start shopping </p>
       </div>
       {error && <div style={{ marginBottom: 20 }}><Alert message={error} onClose={clearError} /></div>}
       <form onSubmit={handleSubmit((d) => reg({ name: d.name, email: d.email, phone: d.phone, password: d.password }))} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
