@@ -6,12 +6,13 @@ from pydantic import BaseModel, field_validator
 from typing import Optional, List
 from decimal import Decimal
 from datetime import date
-
+from app.services.tax_utils import calc_line_tax
 from app.db.session import get_db
 from app.models.models import ProductVariant, Product, StockTransaction, StockTxnType, InternalUser, User
 from app.models.pos import POSSale, POSSaleItem, POSPayment, POSSaleStatus, POSPaymentMethod
 from app.api.v1.endpoints.shared_auth import require_roles, ActingUser
 from app.services.journal_service import post_pos_sale_journal
+from app.api.v1.endpoints.sales_invoices import create_invoice_from_pos_sale
 
 router = APIRouter()
 
@@ -38,13 +39,7 @@ async def resolve_users_id(db: AsyncSession, current_user) -> Optional[int]:
     result = await db.execute(select(User).where(User.id == user_id))
     return user_id if result.scalar_one_or_none() else None
 
-def calc_line_tax(line_total: Decimal, gst_rate: Decimal) -> tuple[Decimal, Decimal]:
-    """retail_price/line_total is tax-inclusive. Back-calculates the
-    taxable value and tax portion. Returns (taxable_value, tax_amount)."""
-    rate = gst_rate / Decimal("100")
-    taxable_value = (line_total / (1 + rate)).quantize(Decimal("0.01"))
-    tax_amount = line_total - taxable_value
-    return taxable_value, tax_amount
+
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -265,6 +260,9 @@ async def create_pos_sale(
         cgst_amount=cgst_amount, sgst_amount=sgst_amount,
         created_by_user_id=users_id,
     )
+    sale.journal_id = journal.id  
+
+    await create_invoice_from_pos_sale(db, sale, computed_items, cgst_amount, sgst_amount, journal.id)
 
     await db.commit()
     await db.refresh(sale)
@@ -381,6 +379,8 @@ async def _finalize_sale(
         created_by_user_id=users_id,
     )
     sale.journal_id = journal.id
+
+    await create_invoice_from_pos_sale(db, sale, computed_items, cgst_amount, sgst_amount, journal.id)
 
 
 class POSHoldPayload(BaseModel):

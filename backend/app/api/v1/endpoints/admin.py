@@ -10,6 +10,7 @@ from app.models.models import InternalUser, InternalRole, User ,Product, UserRol
 from sqlalchemy import func
 from app.core.security import get_password_hash, verify_password, create_access_token, decode_token
 from app.api.v1.endpoints.shared_auth import get_acting_staff_user, require_roles, ActingUser
+from app.models.accounting import SalesInvoice, InvoiceStatus
 
 
 
@@ -155,7 +156,13 @@ async def dashboard_stats(
     orders_count = await db.execute(select(func.count()).select_from(Order))
     total_orders = orders_count.scalar() or 0
 
-    revenue_result = await db.execute(select(func.coalesce(func.sum(Order.total_amount), 0)))
+    # Revenue now comes from SalesInvoice, which covers online orders,
+    # POS sales, and manual invoices in one place — confirmed only,
+    # so drafts and cancelled invoices don't inflate the number.
+    revenue_result = await db.execute(
+        select(func.coalesce(func.sum(SalesInvoice.grand_total), 0))
+        .where(SalesInvoice.status == InvoiceStatus.confirmed)
+    )
     total_revenue = float(revenue_result.scalar() or 0)
 
     pending_result = await db.execute(

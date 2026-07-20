@@ -87,3 +87,63 @@ body {
   color: #ef4444;
   margin-top: 4px;
 }
+
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+
+  html, body {
+    width: 80mm;
+    background: white;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  #receipt, #receipt *,
+  #preview-slip, #preview-slip *,
+  #pos-history-receipt, #pos-history-receipt * {
+    visibility: visible;
+  }
+
+  #receipt, #preview-slip, #pos-history-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 72mm;           /* 80mm roll minus ~4mm margin each side */
+    max-width: 72mm;
+    padding: 2mm !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    line-height: 1.35;
+    color: #000;
+  }
+
+  #receipt table, #preview-slip table, #pos-history-receipt table {
+    width: 100%;
+    font-size: 11px;
+  }
+
+  #receipt th, #preview-slip th, #pos-history-receipt th {
+    font-size: 10px;
+  }
+
+  .modal-backdrop {
+    position: static !important;
+    background: none !important;
+    display: block !important;
+    padding: 0 !important;
+    height: auto !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}

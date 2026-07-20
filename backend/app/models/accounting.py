@@ -147,7 +147,7 @@ class SalesInvoice(Base):
     invoice_date: Mapped[date] = mapped_column(Date)
     due_date: Mapped[Optional[date]] = mapped_column(Date)
     order_id: Mapped[Optional[int]] = mapped_column(ForeignKey("orders.id"))
-    customer_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    customer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id")) 
     billing_name: Mapped[str] = mapped_column(String(100))
     billing_phone: Mapped[str] = mapped_column(String(15))
     billing_line1: Mapped[str] = mapped_column(String(255))
@@ -178,7 +178,9 @@ class SalesInvoice(Base):
     items: Mapped[List["SalesInvoiceItem"]] = relationship("SalesInvoiceItem", back_populates="invoice", cascade="all, delete-orphan")
     returns: Mapped[List["SalesReturn"]] = relationship("SalesReturn", back_populates="invoice")
     receipts: Mapped[List["ReceiptVoucher"]] = relationship("ReceiptVoucher", back_populates="invoice")
-
+    pos_sale_id = Column(Integer, ForeignKey("pos_sales.id"), nullable=True, unique=True)
+    pos_sale = relationship("POSSale", backref="invoice", uselist=False)
+  
 
 class SalesInvoiceItem(Base):
     __tablename__ = "sales_invoice_items"

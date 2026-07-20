@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import posApi from "@/lib/posApi";
+import { useSettings } from "@/hooks/useSettings";
 
 type SaleSummary = {
   id: number;
@@ -29,6 +30,7 @@ export default function POSHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<SaleDetail | null>(null);
   const [voiding, setVoiding] = useState(false);
+  const settings = useSettings();
 
   async function load() {
     setLoading(true);
@@ -64,6 +66,7 @@ export default function POSHistoryPage() {
 
   return (
     <div style={{ padding: 32 }}>
+    <div className="no-print">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <h1 style={{ fontSize: 20, fontWeight: 600, color: "#1e293b", margin: 0 }}>POS Sales History</h1>
         <a href="/admin/pos" style={{ fontSize: 13, color: "#0284c7", textDecoration: "none" }}>
@@ -98,7 +101,7 @@ export default function POSHistoryPage() {
                 onMouseLeave={(e) => (e.currentTarget.style.background = "white")}
               >
                 <td style={{ padding: "10px 16px", fontWeight: 500 }}>{s.sale_number}</td>
-                <td style={{ padding: "10px 16px", color: "#475569" }}>{s.customer_display_name}</td> 
+                <td style={{ padding: "10px 16px", color: "#475569" }}>{s.customer_display_name}</td>
                 <td style={{ padding: "10px 16px", textAlign: "right" }}>{s.total_amount.toFixed(2)}</td>
                 <td style={{ padding: "10px 16px" }}>
                   <span style={{
@@ -118,9 +121,10 @@ export default function POSHistoryPage() {
           </tbody>
         </table>
       </div>
-
+  </div>
       {selected && (
         <div
+          className="modal-backdrop"
           style={{
             position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
             display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16,
@@ -128,23 +132,37 @@ export default function POSHistoryPage() {
           onClick={() => setSelected(null)}
         >
           <div
+            id="pos-history-receipt"
             style={{ background: "white", borderRadius: 12, padding: 24, width: "100%", maxWidth: 420 }}
             onClick={(e) => e.stopPropagation()}
           >
+             {settings && (
+  <div style={{ textAlign: "center", marginBottom: 12, paddingBottom: 8, borderBottom: "1px dashed #cbd5e1" }}>
+    <div style={{ fontWeight: 700, fontSize: 15 }}>{settings.company_name}</div>
+    {settings.address_line1 && (
+      <div style={{ fontSize: 11, color: "#64748b" }}>
+        {settings.address_line1}{settings.city ? `, ${settings.city}` : ""}
+      </div>
+    )}
+    {settings.phone && <div style={{ fontSize: 11, color: "#64748b" }}>Ph: {settings.phone}</div>}
+    {settings.gstin && <div style={{ fontSize: 11, color: "#64748b" }}>GSTIN: {settings.gstin}</div>}
+  </div>
+)}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 4 }}>
-  <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>{selected.sale_number}</h3>
-  <span style={{
-    padding: "2px 10px", borderRadius: 20, fontSize: 12,
-    background: selected.status === "voided" ? "#fee2e2" : "#dcfce7",
-    color: selected.status === "voided" ? "#991b1b" : "#166534",
-    textTransform: "capitalize",
-  }}>
-    {selected.status}
-  </span>
-</div>
-<div style={{ fontSize: 13, color: "#475569", marginBottom: 2 }}>{selected.customer_display_name}</div>
+             
+              <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>{selected.sale_number}</h3>
+              <span style={{
+                padding: "2px 10px", borderRadius: 20, fontSize: 12,
+                background: selected.status === "voided" ? "#fee2e2" : "#dcfce7",
+                color: selected.status === "voided" ? "#991b1b" : "#166534",
+                textTransform: "capitalize",
+              }}>
+                {selected.status}
+              </span>
+            </div>
+            <div style={{ fontSize: 13, color: "#475569", marginBottom: 2 }}>{selected.customer_display_name}</div>
 
-            
+
             <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 16 }}>
               {new Date(selected.created_at).toLocaleString()}
             </div>
@@ -185,12 +203,18 @@ export default function POSHistoryPage() {
               ))}
             </div>
 
-            <div style={{ display: "flex", gap: 10 }}>
+            <div className="no-print" style={{ display: "flex", gap: 10 }}>
               <button
                 onClick={() => setSelected(null)}
                 style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "1px solid #e2e8f0", background: "white", cursor: "pointer" }}
               >
                 Close
+              </button>
+              <button
+                onClick={() => window.print()}
+                style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "1px solid #1e293b", background: "white", color: "#1e293b", cursor: "pointer" }}
+              >
+                Print
               </button>
               {selected.status !== "voided" && (
                 <button
@@ -204,7 +228,9 @@ export default function POSHistoryPage() {
             </div>
           </div>
         </div>
+
       )}
+  
     </div>
   );
 }

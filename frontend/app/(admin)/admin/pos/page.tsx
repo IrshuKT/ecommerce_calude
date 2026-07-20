@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import posApi from "@/lib/posApi";
+import { useSettings } from "@/hooks/useSettings";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -76,6 +77,7 @@ export default function POSPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
+  const settings = useSettings();
 
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [customerTab, setCustomerTab] = useState<"existing" | "walkin">("walkin");
@@ -385,6 +387,18 @@ export default function POSPage() {
       <div className="max-w-md mx-auto py-8 print:py-0">
         <div className="bg-white border rounded-lg p-6 print:border-0 print:shadow-none" id="receipt">
           <h2 className="text-xl font-semibold text-center mb-1">Sale Receipt</h2>
+           {settings && (
+          <div className="text-center mb-3 pb-2" style={{ borderBottom: "1px dashed #cbd5e1" }}>
+            <div className="font-bold text-base">{settings.company_name}</div>
+            {settings.address_line1 && (
+              <div className="text-xs text-gray-500">
+                {settings.address_line1}{settings.city ? `, ${settings.city}` : ""}
+              </div>
+            )}
+            {settings.phone && <div className="text-xs text-gray-500">Ph: {settings.phone}</div>}
+            {settings.gstin && <div className="text-xs text-gray-500">GSTIN: {settings.gstin}</div>}
+          </div>
+        )}
           <p className="text-center text-sm text-gray-500 mb-1">{receipt.sale_number}</p>
           <p className="text-center text-sm text-gray-700 font-medium mb-2">{receipt.customer_display_name}</p>
           <p className="text-xs text-gray-400 mb-4">{new Date(receipt.created_at).toLocaleString()}</p>

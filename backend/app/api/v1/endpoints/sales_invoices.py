@@ -14,6 +14,8 @@ from app.api.v1.endpoints.auth import get_current_user,  oauth2_scheme
 from app.services.journal_service import post_sales_invoice_journal, inv_number
 from app.api.v1.endpoints.shared_auth import get_optional_staff_user, require_roles, ActingUser
 from app.core.security import decode_token
+from app.services.tax_utils import calc_line_tax
+from app.models.pos import POSSale
 
 
 router = APIRouter()
@@ -305,4 +307,72 @@ async def get_invoice(invoice_number: str, db: AsyncSession = Depends(get_db), c
         raise HTTPException(status_code=404, detail="Invoice not found")
     if current_user.role != "admin" and invoice.customer_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
+    return invoice
+
+
+#Invoice from pos---------------
+
+async def create_invoice_from_pos_sale(
+    db: AsyncSession,
+    sale,                       # POSSale, already flushed (has .id, .sale_number)
+    computed_items: list,       # [{"variant": ProductVariant, "quantity": int, "unit_price": Decimal, "line_total": Decimal}, ...]
+    cgst_amount: Decimal,
+    sgst_amount: Decimal,
+    journal_id: int,
+) -> SalesInvoice:
+    """POS sales are always treated as intrastate (POSSale has no
+    is_interstate field — matches the CGST+SGST-only split pos.py already
+    computes at checkout). The journal is NOT re-posted here — POS already
+    posted its own via post_pos_sale_journal; this just records the same
+    journal_id so the invoice and the ledger entry stay linked."""
+
+    customer_name = "Cash Customer"
+    customer_phone = "-"
+    if sale.customer_id is not None:
+        cust_r = await db.execute(select(User).where(User.id == sale.customer_id))
+        customer = cust_r.scalar_one_or_none()
+        if customer:
+            customer_name = customer.name
+            customer_phone = customer.phone or "-"
+    elif sale.walk_in_name:
+        customer_name = sale.walk_in_name
+
+    taxable_total = sale.subtotal - sale.discount_amount - sale.tax_amount
+
+    invoice = SalesInvoice(
+        invoice_number=await inv_number(db), invoice_date=date.today(),
+        order_id=None, pos_sale_id=sale.id, customer_id=sale.customer_id,
+        billing_name=customer_name, billing_phone=customer_phone,
+        billing_line1="—", billing_city="—", billing_state="Kerala", billing_state_code="32",
+        billing_pincode="000000", customer_gstin=sale.gstin,
+        subtotal=sale.subtotal, discount_amount=sale.discount_amount,
+        taxable_amount=taxable_total,
+        cgst_amount=cgst_amount, sgst_amount=sgst_amount, igst_amount=Decimal("0"),
+        total_tax=sale.tax_amount,
+        shipping_charge=Decimal("0"), round_off=Decimal("0.00"),
+        grand_total=sale.total_amount,
+        balance_due=Decimal("0"),          # POS is paid in full at checkout
+        is_interstate=False, status=InvoiceStatus.confirmed,
+        journal_id=journal_id,
+    )
+    db.add(invoice)
+    await db.flush()
+
+    for line in computed_items:
+        variant = line["variant"]
+        gst_rate = variant.product.gst_rate
+        taxable_value, tax_amt = calc_line_tax(line["line_total"], gst_rate)
+        half = (tax_amt / 2).quantize(Decimal("0.01"))
+        db.add(SalesInvoiceItem(
+            invoice_id=invoice.id, variant_id=variant.id, product_name=variant.product.name,
+            quantity=Decimal(str(line["quantity"])), unit="Nos",
+            unit_price=line["unit_price"], taxable_amount=taxable_value, gst_rate=gst_rate,
+            cgst_rate=(gst_rate / 2).quantize(Decimal("0.01")),
+            sgst_rate=(gst_rate / 2).quantize(Decimal("0.01")),
+            igst_rate=Decimal("0"),
+            cgst_amount=half, sgst_amount=(tax_amt - half).quantize(Decimal("0.01")),
+            igst_amount=Decimal("0"),
+            line_total=line["line_total"],
+        ))
+    await db.flush()
     return invoice
