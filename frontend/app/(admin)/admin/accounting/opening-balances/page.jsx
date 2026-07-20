@@ -12,9 +12,10 @@ const fmt = (n) =>
 
 // ─── main component ───────────────────────────────────────────────────────────
 export default function OpeningBalancePage() {
-  const [tab, setTab] = useState("customer"); // "customer" | "vendor"
+  const [tab, setTab] = useState("customer"); // "customer" | "vendor" | "ledger"
   const [customers, setCustomers] = useState([]);
   const [vendors, setVendors] = useState([]);
+  const [accounts, setAccounts] = useState([]);
   const [posted, setPosted] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -60,11 +61,24 @@ export default function OpeningBalancePage() {
     }
   }, []);
 
+  const fetchAccounts = useCallback(async () => {
+    try {
+      const r = await staffApi.get("/journals/accounts/all");
+      const data = Array.isArray(r.data) ? r.data : r.data?.items || [];
+      // Exclude system/equity accounts — opening balance equity itself
+      // shouldn't be picked as the "other side" of its own entry.
+      setAccounts(data.filter((a) => a.code !== "3900" && a.is_active));
+    } catch {
+      /* silent */
+    }
+  }, []);
+
   useEffect(() => {
     fetchPosted();
     fetchCustomers();
     fetchVendors();
-  }, [fetchPosted, fetchCustomers, fetchVendors]);
+    fetchAccounts();
+  }, [fetchPosted, fetchCustomers, fetchVendors, fetchAccounts]);
 
   // ── form helpers ─────────────────────────────────────────────────────────
   const addRow = () =>
@@ -93,8 +107,8 @@ export default function OpeningBalancePage() {
     // validate
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      if (!r.party_id) { setError(`Row ${i + 1}: select a ${tab}`); return; }
-      if (!r.amount || isNaN(r.amount) || Number(r.amount) <= 0) {
+      if (!r.party_id) { setError(`Row ${i + 1}: select a ${tab === "ledger" ? "ledger account" : tab}`); return; }
+      if (!r.amount || isNaN(r.amount) || Number(r.amount) === 0) {
         setError(`Row ${i + 1}: enter a valid amount`); return;
       }
       if (!r.as_of_date) { setError(`Row ${i + 1}: select a date`); return; }
@@ -137,15 +151,24 @@ export default function OpeningBalancePage() {
   };
 
   // ── party list for current tab ───────────────────────────────────────────
-  const partyList = tab === "customer" ? customers : vendors;
+  const partyList = tab === "customer" ? customers : tab === "vendor" ? vendors : accounts;
   const postedForTab = posted.filter((p) => p.party_type === tab);
 
   // ── already-posted party ids (to show badge) ────────────────────────────
   const postedIds = new Set(postedForTab.map((p) => String(p.party_id)));
 
+  const tabLabel = { customer: "Customers", vendor: "Vendors", ledger: "Ledger Accounts" }[tab];
+  const tabSingular = { customer: "customer", vendor: "vendor", ledger: "ledger account" }[tab];
+
+  const descriptionText = {
+    customer: "DR Accounts Receivable → CR Opening Balance Equity",
+    vendor: "DR Opening Balance Equity → CR Accounts Payable",
+    ledger: "Posted against the account's natural balance side → CR/DR Opening Balance Equity",
+  }[tab];
+
   // ─── render ───────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: "24px", maxWidth: 1100, margin: "0 auto", fontFamily: "inherit" }}>
+    <div style={{ padding: "24px", maxWidth: "100%", margin: "0 auto", fontFamily: "inherit" }}>
 
       {/* ── page header ── */}
       <div style={{ marginBottom: 24 }}>
@@ -153,13 +176,13 @@ export default function OpeningBalancePage() {
           Opening Balances
         </h1>
         <p style={{ color: "#64748b", margin: "4px 0 0", fontSize: 14 }}>
-          Set starting balances for customers and vendors when migrating to this system
+          Set starting balances for customers, vendors, and ledger accounts when migrating to this system
         </p>
       </div>
 
       {/* ── tab switcher ── */}
       <div style={{ display: "flex", gap: 0, marginBottom: 24, borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0", width: "fit-content" }}>
-        {["customer", "vendor"].map((t) => (
+        {["customer", "vendor", "ledger"].map((t) => (
           <button
             key={t}
             onClick={() => { setTab(t); resetForm(); }}
@@ -175,24 +198,19 @@ export default function OpeningBalancePage() {
               transition: "all 0.15s",
             }}
           >
-            {t === "customer" ? "👤 Customers" : "🏭 Vendors"}
+            {t === "customer" ? "👤 Customers" : t === "vendor" ? "🏭 Vendors" : "📒 Ledger Accounts"}
           </button>
         ))}
       </div>
 
-      {/* ── two-column layout ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 420px", gap: 20, alignItems: "start" }}>
-
-        {/* ── LEFT: entry form ── */}
-        <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+      {/* ── entry form (full width) ── */}
+      <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", overflow: "hidden", marginBottom: 20 }}>
           <div style={{ padding: "16px 20px", borderBottom: "1px solid #f1f5f9", background: "#f8fafc" }}>
             <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#0f172a" }}>
-              Add Opening Balance — {tab === "customer" ? "Customers" : "Vendors"}
+              Add Opening Balance — {tabLabel}
             </h2>
             <p style={{ margin: "3px 0 0", fontSize: 12, color: "#94a3b8" }}>
-              {tab === "customer"
-                ? "DR Accounts Receivable → CR Opening Balance Equity"
-                : "DR Opening Balance Equity → CR Accounts Payable"}
+              {descriptionText}
             </p>
           </div>
 
@@ -203,7 +221,7 @@ export default function OpeningBalancePage() {
               gridTemplateColumns: "1fr 140px 140px 1fr 36px",
               gap: 8, marginBottom: 8,
             }}>
-              {[tab === "customer" ? "Customer *" : "Vendor *", "Amount (₹) *", "As of Date *", "Narration", ""].map((h, i) => (
+              {[tab === "customer" ? "Customer *" : tab === "vendor" ? "Vendor *" : "Account *", "Amount (₹) *", "As of Date *", "Narration", ""].map((h, i) => (
                 <div key={i} style={{ fontSize: 11, fontWeight: 600, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.04em" }}>
                   {h}
                 </div>
@@ -220,10 +238,10 @@ export default function OpeningBalancePage() {
                   onChange={(e) => updateRow(i, "party_id", e.target.value)}
                   style={selectStyle(!!row.party_id)}
                 >
-                  <option value="">Select {tab}…</option>
+                  <option value="">Select {tabSingular}…</option>
                   {partyList.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} {postedIds.has(String(p.id)) ? "✓" : ""}
+                      {tab === "ledger" ? `${p.code} — ${p.name}` : p.name} {postedIds.has(String(p.id)) ? "✓" : ""}
                     </option>
                   ))}
                 </select>
@@ -250,7 +268,7 @@ export default function OpeningBalancePage() {
                 {/* narration */}
                 <input
                   type="text"
-                  placeholder={`Opening balance - ${tab} name`}
+                  placeholder={`Opening balance - ${tabSingular} name`}
                   value={row.narration}
                   onChange={(e) => updateRow(i, "narration", e.target.value)}
                   style={inputStyle}
@@ -299,77 +317,94 @@ export default function OpeningBalancePage() {
           </div>
         </div>
 
-        {/* ── RIGHT: posted balances ── */}
-        <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", overflow: "hidden" }}>
-          <div style={{ padding: "16px 20px", borderBottom: "1px solid #f1f5f9", background: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#0f172a" }}>
-                Posted Balances
-              </h2>
-              <p style={{ margin: "3px 0 0", fontSize: 12, color: "#94a3b8" }}>
-                {postedForTab.length} {tab}{postedForTab.length !== 1 ? "s" : ""} with opening balance
-              </p>
-            </div>
-            <span style={{
-              background: postedForTab.length > 0 ? "#dbeafe" : "#f1f5f9",
-              color: postedForTab.length > 0 ? "#1d4ed8" : "#94a3b8",
-              borderRadius: 20, padding: "3px 12px", fontSize: 12, fontWeight: 600,
-            }}>
-              {postedForTab.length}
-            </span>
+      {/* ── posted balances (full width, below form) ── */}
+      <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid #f1f5f9", background: "#f8fafc", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: "#0f172a" }}>
+              Posted Balances — {tabLabel}
+            </h2>
+            <p style={{ margin: "3px 0 0", fontSize: 12, color: "#94a3b8" }}>
+              {postedForTab.length} {tabSingular}{postedForTab.length !== 1 ? "s" : ""} with opening balance
+            </p>
           </div>
+          <span style={{
+            background: postedForTab.length > 0 ? "#dbeafe" : "#f1f5f9",
+            color: postedForTab.length > 0 ? "#1d4ed8" : "#94a3b8",
+            borderRadius: 20, padding: "3px 12px", fontSize: 12, fontWeight: 600,
+          }}>
+            {postedForTab.length}
+          </span>
+        </div>
 
-          {postedForTab.length === 0 ? (
-            <div style={{ padding: 32, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>📂</div>
-              No opening balances posted yet for {tab}s
-            </div>
-          ) : (
-            <div style={{ maxHeight: 480, overflowY: "auto" }}>
-              {postedForTab.map((p) => (
-                <div key={p.journal_id} style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  padding: "12px 20px", borderBottom: "1px solid #f8fafc",
-                  transition: "background 0.1s",
+        {postedForTab.length === 0 ? (
+          <div style={{ padding: 32, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>📂</div>
+            No opening balances posted yet for {tabLabel.toLowerCase()}
+          </div>
+        ) : (
+          <div style={{ maxHeight: 480, overflowY: "auto" }}>
+            {/* header row */}
+            <div style={{
+              display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 90px",
+              padding: "10px 20px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0",
+            }}>
+              {[tab === "ledger" ? "Account" : "Name", "Voucher #", "Date", "Amount", ""].map((h, i) => (
+                <div key={i} style={{
+                  fontSize: 11, fontWeight: 600, color: "#94a3b8",
+                  textTransform: "uppercase", letterSpacing: "0.04em",
+                  textAlign: i === 3 ? "right" : i === 4 ? "center" : "left",
                 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14, color: "#0f172a", marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {p.party_name}
-                    </div>
-                    <div style={{ fontSize: 12, color: "#94a3b8" }}>
-                      {p.voucher_number} · {p.voucher_date}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right", marginLeft: 12 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, color: "#0ea5e9" }}>
-                      {fmt(p.amount)}
-                    </div>
-                    <button
-                      onClick={() => handleDelete(p.journal_id, p.party_name)}
-                      style={{
-                        background: "none", border: "none", color: "#ef4444",
-                        fontSize: 11, cursor: "pointer", padding: "2px 0", marginTop: 2,
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
+                  {h}
                 </div>
               ))}
-
-              {/* total */}
-              <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "12px 20px", background: "#f8fafc", borderTop: "2px solid #e2e8f0",
-              }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Total Opening Balance</span>
-                <span style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>
-                  {fmt(postedForTab.reduce((s, p) => s + p.amount, 0))}
-                </span>
-              </div>
             </div>
-          )}
-        </div>
+
+            {postedForTab.map((p) => (
+              <div key={p.journal_id} style={{
+                display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 90px",
+                alignItems: "center",
+                padding: "12px 20px", borderBottom: "1px solid #f8fafc",
+                transition: "background 0.1s",
+              }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {p.party_name}
+                </div>
+                <div style={{ fontSize: 13, color: "#64748b" }}>
+                  {p.voucher_number}
+                </div>
+                <div style={{ fontSize: 13, color: "#64748b" }}>
+                  {p.voucher_date}
+                </div>
+                <div style={{ textAlign: "right", fontWeight: 700, fontSize: 15, color: "#0ea5e9" }}>
+                  {fmt(p.amount)}
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <button
+                    onClick={() => handleDelete(p.journal_id, p.party_name)}
+                    style={{
+                      background: "none", border: "none", color: "#ef4444",
+                      fontSize: 12, cursor: "pointer", padding: "2px 8px",
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {/* total */}
+            <div style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "12px 20px", background: "#f8fafc", borderTop: "2px solid #e2e8f0",
+            }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Total Opening Balance</span>
+              <span style={{ fontSize: 16, fontWeight: 700, color: "#0f172a" }}>
+                {fmt(postedForTab.reduce((s, p) => s + p.amount, 0))}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── info box ── */}
@@ -377,8 +412,9 @@ export default function OpeningBalancePage() {
         marginTop: 20, padding: "14px 18px", background: "#eff6ff",
         border: "1px solid #bfdbfe", borderRadius: 10, fontSize: 13, color: "#1e40af",
       }}>
-        <strong>ℹ️ Note:</strong> Opening balances are posted as journal entries tagged to the selected {tab}.
-        They appear as the first row in the {tab}'s statement of account. Each {tab} can only have one opening balance —
+        <strong>ℹ️ Note:</strong> Opening balances are posted as journal entries tagged to the selected {tabSingular}.
+        {tab !== "ledger" && ` They appear as the first row in the ${tabSingular}'s statement of account.`}
+        {" "}Each {tabSingular} can only have one opening balance —
         delete the existing entry before re-posting.
       </div>
     </div>

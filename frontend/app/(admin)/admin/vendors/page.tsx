@@ -9,7 +9,7 @@ export default function VendorsPage() {
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "", code: "", gstin: "", phone: "", email: "", contact_person: "", city: "", state: "Kerala", state_code: "32", credit_days: "30" });
+  const [form, setForm] = useState({ name: "", gstin: "", phone: "", email: "", contact_person: "", city: "", state: "Kerala", state_code: "32", credit_days: "30" });
   const [saving, setSaving] = useState(false);
   const router = useRouter();
 
@@ -25,7 +25,7 @@ export default function VendorsPage() {
     try {
       await staffApi.post("/vendors/", { ...form, credit_days: parseInt(form.credit_days) });
       setShowForm(false);
-      setForm({ name: "", code: "", gstin: "", phone: "", email: "", contact_person: "", city: "", state: "Kerala", state_code: "32", credit_days: "30" });
+      setForm({ name: "",  gstin: "", phone: "", email: "", contact_person: "", city: "", state: "Kerala", state_code: "32", credit_days: "30" });
       load();
     } catch (e: any) { alert(e.response?.data?.detail || "Failed to save"); } finally { setSaving(false); }
   };

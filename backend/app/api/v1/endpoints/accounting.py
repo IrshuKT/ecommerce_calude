@@ -23,7 +23,7 @@ from app.services.journal_service import (
     post_purchase_journal, post_purchase_return_journal,
     post_receipt_journal, post_payment_journal,
     purch_number, rcpt_number, pay_number, dn_number, pr_number
-)
+,vnd_number)
 from app.core.config import settings
 
 # ── Vendors ──────────────────────────────
@@ -33,7 +33,7 @@ accounting_router = APIRouter()
 
 class VendorIn(BaseModel):
     name: str
-    code: str
+    code: Optional[str] = None
     gstin: Optional[str] = None
     pan: Optional[str] = None
     phone: Optional[str] = None
@@ -69,12 +69,18 @@ async def create_vendor(
     db: AsyncSession = Depends(get_db),
     current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
-    existing = await db.execute(select(Vendor).where(Vendor.code == payload.code))
+    code = payload.code.strip() if payload.code and payload.code.strip() else await vnd_number(db)
+
+    existing = await db.execute(select(Vendor).where(Vendor.code == code))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Vendor code already exists")
-    vendor = Vendor(**payload.model_dump())
+
+    vendor_data = payload.model_dump()
+    vendor_data["code"] = code
+    vendor = Vendor(**vendor_data)
     db.add(vendor)
-    await db.flush()
+    await db.commit()
+    await db.refresh(vendor)
     return {"id": vendor.id, "code": vendor.code, "name": vendor.name}
 
 
@@ -233,76 +239,75 @@ async def list_purchases(
     return result.scalars().all()
 
 
+class ReceiveItemIn(BaseModel):
+    item_id: int
+    received_qty: Decimal
+
+class ReceivePayload(BaseModel):
+    items: List[ReceiveItemIn]
+
+
 @purchase_router.patch("/{purchase_number:path}/receive")
 async def mark_received(
     purchase_number: str,
+    payload: ReceivePayload,
     db: AsyncSession = Depends(get_db),
     current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     result = await db.execute(
-        select(Purchase)
-        .options(selectinload(Purchase.items))
+        select(Purchase).options(selectinload(Purchase.items))
         .where(Purchase.purchase_number == purchase_number)
     )
     purchase = result.scalar_one_or_none()
-
     if not purchase:
-        raise HTTPException(status_code=404, detail="Purchase not found")
-
+        raise HTTPException(404, "Purchase not found")
     if purchase.status == PurchaseStatus.received:
-        raise HTTPException(status_code=400, detail="Purchase already marked as received")
+        raise HTTPException(400, "Purchase already fully received")
 
     from app.models.models import ProductVariant
     from app.services.stock_service import record_stock_transaction
 
-    stock_updated = 0
+    qty_map = {i.item_id: i.received_qty for i in payload.items}
+    items_by_id = {i.id: i for i in purchase.items}
 
-    print(f"DEBUG: Purchase {purchase_number} has {len(purchase.items)} items")
+    stock_updated = 0
+    all_fully_received = True
 
     for item in purchase.items:
-        print(f"DEBUG: Item — product={item.product_name}, variant_id={item.variant_id}, qty={item.quantity}")
-        item.received_qty = item.quantity
+        new_receive_qty = qty_map.get(item.id, Decimal("0"))
+        if new_receive_qty < 0:
+            raise HTTPException(400, f"Invalid quantity for {item.product_name}")
 
-        if not item.variant_id:
-            print(f"DEBUG: SKIPPING — variant_id is None for {item.product_name}")
-            continue
+        already = item.received_qty or Decimal("0")
+        total = already + new_receive_qty
+        if total > item.quantity:
+            raise HTTPException(400, f"Receiving {total} exceeds ordered {item.quantity} for {item.product_name}")
 
-        v_result = await db.execute(
-            select(ProductVariant).where(ProductVariant.id == item.variant_id)
-        )
-        variant = v_result.scalar_one_or_none()
+        item.received_qty = total
+        if total < item.quantity:
+            all_fully_received = False
 
-        if not variant:
-            print(f"DEBUG: SKIPPING — variant {item.variant_id} not found in DB")
-            continue
+        if new_receive_qty > 0 and item.variant_id:
+            v_result = await db.execute(select(ProductVariant).where(ProductVariant.id == item.variant_id))
+            variant = v_result.scalar_one_or_none()
+            if variant:
+                await record_stock_transaction(
+                    db=db, variant=variant, txn_type="in", qty=int(new_receive_qty),
+                    reference_type="purchase", reference_id=purchase.purchase_number,
+                    note=f"Purchase {purchase.purchase_number} — partial/received",
+                    created_by_id=current_user.id,
+                )
+                db.add(variant)
+                await db.flush()
+                stock_updated += 1
 
-        print(f"DEBUG: Stock BEFORE = {variant.stock_qty} for variant {variant.sku}")
-
-        after = await record_stock_transaction(
-            db=db,
-            variant=variant,
-            txn_type="in",
-            qty=int(item.quantity),
-            reference_type="purchase",
-            reference_id=purchase.purchase_number,
-            note=f"Purchase {purchase.purchase_number}",
-            created_by_id=current_user.id,
-        )
-
-        print(f"DEBUG: Stock AFTER = {after} for variant {variant.sku}")
-        db.add(variant)
-        await db.flush()
-        stock_updated += 1
-
-    purchase.status = PurchaseStatus.received
+    purchase.status = PurchaseStatus.received if all_fully_received else PurchaseStatus.partially_received
     await db.commit()
     await db.refresh(purchase)
 
-    print(f"DEBUG: Committed. {stock_updated} variants updated.")
-
     return {
-        "message": f"Purchase received. {stock_updated} variant(s) stock updated.",
-        "stock_updated": stock_updated,
+        "message": f"Stock updated ({stock_updated} variant(s)). Status: {purchase.status}",
+        "status": purchase.status,
     }
 
 @purchase_router.get("/{purchase_number:path}")

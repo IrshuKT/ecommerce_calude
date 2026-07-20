@@ -292,8 +292,17 @@ async def create_product(
                 db.add(ProductAttributeValue(attribute_id=a.id, value=val.value, sort_order=val.sort_order or i))
 
         # Variants
+        seen_skus = set()
         for var in payload.variants:
-           db.add(ProductVariant(
+            if var.sku in seen_skus:
+                raise HTTPException(400, f"Duplicate SKU in request: {var.sku}")
+            seen_skus.add(var.sku)
+
+            existing_sku = await db.execute(select(ProductVariant).where(ProductVariant.sku == var.sku))
+            if existing_sku.scalar_one_or_none():
+                raise HTTPException(400, f"SKU already exists: {var.sku}")
+
+            db.add(ProductVariant(
                 product_id=product.id,
                 sku=var.sku,
                 selected_attributes=var.selected_attributes,

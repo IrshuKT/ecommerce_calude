@@ -30,6 +30,7 @@ class POSSale(Base):
     discount_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    gstin: Mapped[Optional[str]] = mapped_column(String(15))
     status: Mapped[POSSaleStatus] = mapped_column(
         Enum(POSSaleStatus, values_callable=lambda x: [e.value for e in x]),
         default=POSSaleStatus.completed,

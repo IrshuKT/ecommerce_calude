@@ -9,14 +9,14 @@ from pydantic import BaseModel
 from typing import Optional, List
 from decimal import Decimal
 from datetime import date
-
+from sqlalchemy.orm import selectinload
 from app.db.session import get_db
 from app.models.accounting import (
     Account, Journal, JournalLine, AccountType,
     SalesInvoice, Purchase, GSTReturn, GSTReturnType
 )
 from app.models.models import User
-
+from app.models.pos import POSSale, POSSaleStatus
 from app.api.v1.endpoints.shared_auth import require_roles, ActingUser
 from app.services.journal_service import get_account_balance
 from app.models.models import( Product,ProductVariant,Order,OrderItem,OrderStatus)
@@ -263,6 +263,8 @@ async def generate_gstr1(
     year: int = Query(..., ge=2020),
 ):
     """Generate GSTR-1 data — outward supplies."""
+    from app.models.pos import POSSale, POSSaleItem, POSSaleStatus
+
     from_date = date(year, month, 1)
     import calendar
     last_day = calendar.monthrange(year, month)[1]
@@ -279,9 +281,8 @@ async def generate_gstr1(
     )
     invoices = result.scalars().all()
 
-    b2b = []   # invoices with GSTIN
-    b2c = []   # invoices without GSTIN
-
+    b2b = []
+    b2c = []
     total_taxable = total_cgst = total_sgst = total_igst = Decimal("0")
 
     for inv in invoices:
@@ -307,20 +308,57 @@ async def generate_gstr1(
         total_sgst += inv.sgst_amount
         total_igst += inv.igst_amount
 
-    return {
-        "return_type": "GSTR-1",
-        "period": f"{month:02d}/{year}",
-        "b2b_invoices": b2b,
-        "b2c_invoices": b2c,
-        "summary": {
-            "total_invoices": len(invoices),
-            "total_taxable_value": total_taxable,
-            "total_cgst": total_cgst,
-            "total_sgst": total_sgst,
-            "total_igst": total_igst,
-            "total_tax": total_cgst + total_sgst + total_igst,
-        },
-    }
+        # ── POS sales — consolidated, mostly B2C(Small); split out any with a GSTIN'd customer ──
+        pos_result = await db.execute(
+                select(POSSale)
+                .options(selectinload(POSSale.customer))
+                .where(
+                    POSSale.status == POSSaleStatus.completed,
+                    func.date(POSSale.created_at) >= from_date,
+                    func.date(POSSale.created_at) <= to_date,
+                )
+            )
+        pos_sales = pos_result.scalars().all()
+
+        pos_b2c_taxable = pos_b2c_cgst = pos_b2c_sgst = Decimal("0")
+
+        for sale in pos_sales:
+            taxable = sale.total_amount - sale.tax_amount
+            cgst = sgst = sale.tax_amount / 2
+
+            if sale.gstin:
+                b2b.append({
+                    "invoice_number": sale.sale_number,
+                    "invoice_date": sale.created_at.date(),
+                    "customer_name": sale.customer.name if sale.customer else (sale.walk_in_name or "Cash Customer"),
+                    "gstin": sale.gstin,
+                    "taxable_value": taxable,
+                    "cgst": cgst,
+                    "sgst": sgst,
+                    "igst": Decimal("0"),
+                    "total": sale.total_amount,
+                    "is_interstate": False,
+                })
+                total_taxable += taxable
+                total_cgst += cgst
+                total_sgst += sgst
+            else:
+                pos_b2c_taxable += taxable
+                pos_b2c_cgst += cgst
+                pos_b2c_sgst += sgst
+
+        total_taxable += pos_b2c_taxable
+        total_cgst += pos_b2c_cgst
+        total_sgst += pos_b2c_sgst
+
+        b2c_small_summary = {
+            "description": "B2C (Small) — POS/retail sales, consolidated",
+            "taxable_value": pos_b2c_taxable,
+            "cgst": pos_b2c_cgst,
+            "sgst": pos_b2c_sgst,
+            "igst": Decimal("0"),
+            "total": pos_b2c_taxable + pos_b2c_cgst + pos_b2c_sgst,
+        } if pos_b2c_taxable > 0 else None
 
 
 @gst_router.get("/gstr3b")
@@ -336,22 +374,31 @@ async def generate_gstr3b(
     last_day = calendar.monthrange(year, month)[1]
     to_date = date(year, month, last_day)
 
-    # Outward supplies (from sales)
-    sales_result = await db.execute(
-        select(
-            func.coalesce(func.sum(SalesInvoice.taxable_amount), 0).label("taxable"),
-            func.coalesce(func.sum(SalesInvoice.cgst_amount), 0).label("cgst"),
-            func.coalesce(func.sum(SalesInvoice.sgst_amount), 0).label("sgst"),
-            func.coalesce(func.sum(SalesInvoice.igst_amount), 0).label("igst"),
-        ).where(
-            SalesInvoice.invoice_date >= from_date,
-            SalesInvoice.invoice_date <= to_date,
-            SalesInvoice.status != "cancelled",
+    # Outward supplies — from journal, covers both sales invoices and POS sales
+    async def account_credit_total(account_code: str) -> Decimal:
+        acc_r = await db.execute(select(Account).where(Account.code == account_code))
+        account = acc_r.scalar_one_or_none()
+        if not account:
+            return Decimal("0")
+        r = await db.execute(
+            select(func.coalesce(func.sum(JournalLine.credit), 0))
+            .join(Journal, JournalLine.journal_id == Journal.id)
+            .where(
+                JournalLine.account_id == account.id,
+                Journal.is_posted == True,
+                Journal.voucher_type.in_(["sales_invoice", "pos_sale"]),
+                Journal.voucher_date >= from_date,
+                Journal.voucher_date <= to_date,
+            )
         )
-    )
-    sales = sales_result.one()
+        return Decimal(str(r.scalar()))
 
-    # ITC from purchases
+    taxable_value = await account_credit_total("4000")
+    cgst = await account_credit_total("2100")
+    sgst = await account_credit_total("2200")
+    igst = await account_credit_total("2300")
+
+    # ITC from purchases (unchanged)
     purchase_result = await db.execute(
         select(
             func.coalesce(func.sum(Purchase.cgst_amount), 0).label("cgst"),
@@ -365,7 +412,7 @@ async def generate_gstr3b(
     )
     itc = purchase_result.one()
 
-    tax_liability = Decimal(str(sales.cgst)) + Decimal(str(sales.sgst)) + Decimal(str(sales.igst))
+    tax_liability = cgst + sgst + igst
     itc_total = Decimal(str(itc.cgst)) + Decimal(str(itc.sgst)) + Decimal(str(itc.igst))
     net_payable = max(tax_liability - itc_total, Decimal("0"))
 
@@ -373,10 +420,10 @@ async def generate_gstr3b(
         "return_type": "GSTR-3B",
         "period": f"{month:02d}/{year}",
         "outward_supplies": {
-            "taxable_value": Decimal(str(sales.taxable)),
-            "cgst": Decimal(str(sales.cgst)),
-            "sgst": Decimal(str(sales.sgst)),
-            "igst": Decimal(str(sales.igst)),
+            "taxable_value": taxable_value,
+            "cgst": cgst,
+            "sgst": sgst,
+            "igst": igst,
             "total_tax": tax_liability,
         },
         "input_tax_credit": {

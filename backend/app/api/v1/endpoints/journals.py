@@ -1,19 +1,22 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select,delete
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
-from typing import Optional
 from datetime import date
+from typing import Optional, List
+from decimal import Decimal
 from app.db.session import get_db
 from app.models.accounting import (Journal, JournalLine, Account, Vendor, VoucherType, SalesInvoice,SalesReturn,ReceiptVoucher,
 Purchase,PurchaseReturn,PaymentVoucher)
 from app.models.models import User
-from app.api.v1.endpoints.shared_auth import require_roles, ActingUser
+from app.api.v1.endpoints.shared_auth import require_roles, ActingUser, get_optional_staff_user, get_acting_staff_user
+from app.models.accounting import AccountType
 
 
 router = APIRouter()
 
+DEBIT_NORMAL_TYPES = {AccountType.asset, AccountType.expense}
 
 class OpeningBalanceEntry(BaseModel):
     party_type: str         
@@ -28,6 +31,7 @@ class OpeningBalanceBulkPayload(BaseModel):
     as_of_date: date         # global date (can be overridden per entry)
  
  
+
 @router.post("/opening-balances", status_code=201)
 async def create_opening_balances(
     payload: OpeningBalanceBulkPayload,
@@ -35,22 +39,42 @@ async def create_opening_balances(
     current_user: ActingUser = Depends(require_roles("admin", "manager")),
 ):
     """
-    Post opening balances for customers and/or vendors.
+    Post opening balances for customers, vendors, and/or ledger accounts.
  
-    Customer opening balance journal:
+    The `amount` sign decides direction — this lets you represent the normal
+    case as well as the flipped case (customer with credit/advance balance,
+    vendor we've prepaid, an asset account sitting in credit, etc.) without
+    a separate UI control. Zero is a valid, intentional entry — it posts a
+    real (zero-value) journal line, marking that party/account as reviewed
+    during migration with no opening balance, rather than being skipped.
+ 
+    Customer — normal (amount > 0):
         DR  1200 Accounts Receivable   (customer_id tagged)
         CR  3900 Opening Balance Equity
+    Customer — flipped (amount < 0, customer has credit/advance):
+        DR  3900 Opening Balance Equity
+        CR  1200 Accounts Receivable   (customer_id tagged)
  
-    Vendor opening balance journal:
+    Vendor — normal (amount > 0):
         DR  3900 Opening Balance Equity
         CR  2100 Accounts Payable      (vendor_id tagged)
+    Vendor — flipped (amount < 0, we prepaid the vendor):
+        DR  2100 Accounts Payable      (vendor_id tagged)
+        CR  3900 Opening Balance Equity
+ 
+    Ledger account — normal (amount > 0):
+        Posted to the account's natural balance side (DR for asset/expense,
+        CR for liability/equity/income), contra to Opening Balance Equity.
+    Ledger account — flipped (amount < 0):
+        Posted to the opposite side (e.g. an overdrawn bank account, or a
+        contra-asset like accumulated depreciation).
     """
     from app.services.journal_service import post_journal
  
     # ── Fetch required accounts ──────────────────────────────────────────────
-    ar_result  = await db.execute(select(Account).where(Account.code == "1200"))
-    ap_result  = await db.execute(select(Account).where(Account.code == "2100"))
-    eq_result  = await db.execute(select(Account).where(Account.code == "3900"))
+    ar_result = await db.execute(select(Account).where(Account.code == "1200"))
+    ap_result = await db.execute(select(Account).where(Account.code == "2100"))
+    eq_result = await db.execute(select(Account).where(Account.code == "3900"))
  
     ar_account = ar_result.scalar_one_or_none()
     ap_account = ap_result.scalar_one_or_none()
@@ -61,7 +85,6 @@ async def create_opening_balances(
     if not ap_account:
         raise HTTPException(400, "Account 2100 (Accounts Payable) not found")
     if not eq_account:
-        from app.models.accounting import AccountType
         eq_account = Account(
             code="3900",
             name="Opening Balance Equity",
@@ -76,18 +99,17 @@ async def create_opening_balances(
  
     for entry in payload.entries:
         entry_date = entry.as_of_date or payload.as_of_date
+        amount = Decimal(str(abs(entry.amount)))
+        is_flipped = entry.amount < 0
  
+        # ── Customer ──────────────────────────────────────────────────────
         if entry.party_type == "customer":
-            # Validate customer exists
             from app.models.models import User as UserModel
-            cust_r = await db.execute(
-                select(UserModel).where(UserModel.id == entry.party_id)
-            )
+            cust_r = await db.execute(select(UserModel).where(UserModel.id == entry.party_id))
             customer = cust_r.scalar_one_or_none()
             if not customer:
                 raise HTTPException(400, f"Customer id={entry.party_id} not found")
  
-            # Check duplicate
             dup = await db.execute(
                 select(JournalLine).join(Journal).where(
                     Journal.voucher_type == VoucherType.opening_balance,
@@ -105,33 +127,28 @@ async def create_opening_balances(
             narration = entry.narration or f"Opening balance - {customer.name}"
  
             lines = [
-                # DR Accounts Receivable (tagged to customer)
                 {
                     "account_code": ar_account.code,
-                    "debit": entry.amount,
-                    "credit": 0,
+                    "debit": 0 if is_flipped else amount,
+                    "credit": amount if is_flipped else 0,
                     "narration": narration,
                     "customer_id": entry.party_id,
                 },
-                # CR Opening Balance Equity
                 {
                     "account_code": eq_account.code,
-                    "debit": 0,
-                    "credit": entry.amount,
+                    "debit": amount if is_flipped else 0,
+                    "credit": 0 if is_flipped else amount,
                     "narration": narration,
                 },
             ]
  
+        # ── Vendor ────────────────────────────────────────────────────────
         elif entry.party_type == "vendor":
-            # Validate vendor exists
-            vend_r = await db.execute(
-                select(Vendor).where(Vendor.id == entry.party_id)
-            )
+            vend_r = await db.execute(select(Vendor).where(Vendor.id == entry.party_id))
             vendor = vend_r.scalar_one_or_none()
             if not vendor:
                 raise HTTPException(400, f"Vendor id={entry.party_id} not found")
  
-            # Check duplicate
             dup = await db.execute(
                 select(JournalLine).join(Journal).where(
                     Journal.voucher_type == VoucherType.opening_balance,
@@ -149,25 +166,72 @@ async def create_opening_balances(
             narration = entry.narration or f"Opening balance - {vendor.name}"
  
             lines = [
-                # DR Opening Balance Equity
                 {
                     "account_code": eq_account.code,
-                    "debit": entry.amount,
-                    "credit": 0,
+                    "debit": amount if is_flipped else 0,
+                    "credit": 0 if is_flipped else amount,
                     "narration": narration,
                 },
-                # CR Accounts Payable (tagged to vendor)
                 {
                     "account_code": ap_account.code,
-                    "debit": 0,
-                    "credit": entry.amount,
+                    "debit": 0 if is_flipped else amount,
+                    "credit": amount if is_flipped else 0,
                     "narration": narration,
                     "vendor_id": entry.party_id,
                 },
             ]
  
+        # ── Ledger account ────────────────────────────────────────────────
+        elif entry.party_type == "ledger":
+            acc_r = await db.execute(select(Account).where(Account.id == entry.party_id))
+            account = acc_r.scalar_one_or_none()
+            if not account:
+                raise HTTPException(400, f"Account id={entry.party_id} not found")
+            if account.code == eq_account.code:
+                raise HTTPException(400, "Cannot set an opening balance directly against Opening Balance Equity")
+ 
+            dup = await db.execute(
+                select(JournalLine).join(Journal).where(
+                    Journal.voucher_type == VoucherType.opening_balance,
+                    JournalLine.account_id == account.id,
+                    JournalLine.customer_id.is_(None),
+                    JournalLine.vendor_id.is_(None),
+                )
+            )
+            if dup.scalar_one_or_none():
+                raise HTTPException(
+                    400,
+                    f"Opening balance already posted for account '{account.name}'. "
+                    "Delete the existing journal entry first."
+                )
+ 
+            narration = entry.narration or f"Opening balance - {account.name}"
+ 
+            natural_is_debit = account.account_type in DEBIT_NORMAL_TYPES
+            # XOR: a flipped (negative) amount lands on the opposite side
+            # of whatever this account's natural balance side is.
+            is_debit_side = natural_is_debit != is_flipped
+ 
+            lines = [
+                {
+                    "account_code": account.code,
+                    "debit": amount if is_debit_side else 0,
+                    "credit": 0 if is_debit_side else amount,
+                    "narration": narration,
+                },
+                {
+                    "account_code": eq_account.code,
+                    "debit": 0 if is_debit_side else amount,
+                    "credit": amount if is_debit_side else 0,
+                    "narration": narration,
+                },
+            ]
+ 
         else:
-            raise HTTPException(400, f"party_type must be 'customer' or 'vendor', got '{entry.party_type}'")
+            raise HTTPException(
+                400,
+                f"party_type must be 'customer', 'vendor', or 'ledger', got '{entry.party_type}'"
+            )
  
         journal = await post_journal(
             db=db,
@@ -182,14 +246,13 @@ async def create_opening_balances(
         results.append({
             "party_type": entry.party_type,
             "party_id": entry.party_id,
-            "amount": entry.amount,
+            "amount": float(entry.amount),   # preserve original sign in the response
             "journal_id": journal.id,
             "voucher_number": journal.voucher_number,
         })
  
     await db.commit()
     return {"posted": len(results), "entries": results}
- 
  
 @router.get("/opening-balances")
 async def list_opening_balances(
@@ -199,11 +262,13 @@ async def list_opening_balances(
     """List all posted opening balance journals with party info."""
     from app.models.models import User as UserModel
  
+    eq_result = await db.execute(select(Account).where(Account.code == "3900"))
+    eq_account = eq_result.scalar_one_or_none()
+    eq_account_code = eq_account.code if eq_account else "3900"
+ 
     result = await db.execute(
         select(Journal)
-        .options(
-            selectinload(Journal.lines).selectinload(JournalLine.account)
-        )
+        .options(selectinload(Journal.lines).selectinload(JournalLine.account))
         .where(Journal.voucher_type == VoucherType.opening_balance)
         .order_by(Journal.voucher_date.desc())
     )
@@ -212,12 +277,12 @@ async def list_opening_balances(
     output = []
     for j in journals:
         for line in j.lines:
-            # Only show the AR/AP line (has party tag), skip equity line
             if line.customer_id:
-                cust = await db.execute(
-                    select(UserModel).where(UserModel.id == line.customer_id)
-                )
+                cust = await db.execute(select(UserModel).where(UserModel.id == line.customer_id))
                 party = cust.scalar_one_or_none()
+                # Signed amount: debit-side line is the "normal" positive direction,
+                # a credit-side line (flipped/advance) is shown negative.
+                signed_amount = float(line.debit) if float(line.debit) > 0 else -float(line.credit)
                 output.append({
                     "journal_id": j.id,
                     "voucher_number": j.voucher_number,
@@ -225,14 +290,13 @@ async def list_opening_balances(
                     "party_type": "customer",
                     "party_id": line.customer_id,
                     "party_name": party.name if party else "Unknown",
-                    "amount": float(line.debit),  # AR is debit
+                    "amount": signed_amount,
                     "narration": j.narration,
                 })
             elif line.vendor_id:
-                vend = await db.execute(
-                    select(Vendor).where(Vendor.id == line.vendor_id)
-                )
+                vend = await db.execute(select(Vendor).where(Vendor.id == line.vendor_id))
                 party = vend.scalar_one_or_none()
+                signed_amount = float(line.credit) if float(line.credit) > 0 else -float(line.debit)
                 output.append({
                     "journal_id": j.id,
                     "voucher_number": j.voucher_number,
@@ -240,7 +304,23 @@ async def list_opening_balances(
                     "party_type": "vendor",
                     "party_id": line.vendor_id,
                     "party_name": party.name if party else "Unknown",
-                    "amount": float(line.credit),  # AP is credit
+                    "amount": signed_amount,
+                    "narration": j.narration,
+                })
+            elif line.account_id and line.account and line.account.code != eq_account_code:
+                natural_is_debit = line.account.account_type in DEBIT_NORMAL_TYPES
+                if natural_is_debit:
+                    signed_amount = float(line.debit) if float(line.debit) > 0 else -float(line.credit)
+                else:
+                    signed_amount = float(line.credit) if float(line.credit) > 0 else -float(line.debit)
+                output.append({
+                    "journal_id": j.id,
+                    "voucher_number": j.voucher_number,
+                    "voucher_date": str(j.voucher_date),
+                    "party_type": "ledger",
+                    "party_id": line.account_id,
+                    "party_name": line.account.name,
+                    "amount": signed_amount,
                     "narration": j.narration,
                 })
  
@@ -703,3 +783,74 @@ async def vendor_statement(
             "closing_balance": round(balance, 2),
         }
     }
+class JournalLineUpdate(BaseModel):
+    account_code: str
+    debit: Decimal = Decimal("0")
+    credit: Decimal = Decimal("0")
+    narration: Optional[str] = None
+
+class JournalUpdateIn(BaseModel):
+    voucher_date: date
+    narration: str
+    reference: Optional[str] = None
+    lines: List[JournalLineUpdate]
+
+
+@router.delete("/{journal_id}", status_code=204)
+async def delete_journal(
+    journal_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
+):
+    result = await db.execute(select(Journal).where(Journal.id == journal_id))
+    journal = result.scalar_one_or_none()
+    if not journal:
+        raise HTTPException(404, "Journal not found")
+
+    await db.execute(delete(JournalLine).where(JournalLine.journal_id == journal_id))
+    await db.delete(journal)
+    await db.commit()
+
+
+@router.patch("/{journal_id}")
+async def update_journal(
+    journal_id: int,
+    payload: JournalUpdateIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: ActingUser = Depends(require_roles("admin", "manager")),
+):
+    result = await db.execute(select(Journal).where(Journal.id == journal_id))
+    journal = result.scalar_one_or_none()
+    if not journal:
+        raise HTTPException(404, "Journal not found")
+
+    total_debit = sum(l.debit for l in payload.lines)
+    total_credit = sum(l.credit for l in payload.lines)
+    if abs(total_debit - total_credit) > Decimal("0.01"):
+        raise HTTPException(400, f"Journal imbalance: debit={total_debit} credit={total_credit}")
+
+    try:
+        await db.execute(delete(JournalLine).where(JournalLine.journal_id == journal_id))
+
+        for line in payload.lines:
+            acc_result = await db.execute(select(Account).where(Account.code == line.account_code))
+            account = acc_result.scalar_one_or_none()
+            if not account:
+                raise HTTPException(400, f"Account not found: {line.account_code}")
+            db.add(JournalLine(
+                journal_id=journal_id, account_id=account.id,
+                debit=line.debit, credit=line.credit, narration=line.narration,
+            ))
+
+        journal.voucher_date = payload.voucher_date
+        journal.narration = payload.narration
+        journal.reference = payload.reference
+
+        await db.commit()
+        return {"message": "Journal updated", "id": journal_id}
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(500, str(e))

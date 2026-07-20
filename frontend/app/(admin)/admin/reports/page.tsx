@@ -434,6 +434,11 @@ function TBReport({ data }: any) {
 }
 
 function BSReport({ data }: any) {
+   const totalAssets = parseFloat(data.assets?.total || 0);
+  const totalLiabilities = parseFloat(data.liabilities?.total || 0);
+  const totalEquity = parseFloat(data.equity?.total || 0);
+  const diff = totalAssets - (totalLiabilities + totalEquity);
+  const isBalanced = Math.abs(diff) < 0.01;
   return (
     <div>
       <ReportTitle title="Balance Sheet" sub={`As of ${data.as_of_date}`} />
@@ -443,6 +448,13 @@ function BSReport({ data }: any) {
           <Section title="Liabilities" items={data.liabilities?.items} total={data.liabilities?.total} color="#dc2626" />
           <Section title="Equity"      items={data.equity?.items}      total={data.equity?.total}      color="#7c3aed" />
         </div>
+      </div>
+      <div style={{ marginTop: 24, paddingTop: 16, borderTop: "2px solid #e2e8f0", textAlign: "right" }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: isBalanced ? "#16a34a" : "#dc2626" }}>
+          {isBalanced
+            ? "✓ Balanced"
+            : `⚠ Out of balance by ₹${Math.abs(diff).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`}
+        </span>
       </div>
     </div>
   );

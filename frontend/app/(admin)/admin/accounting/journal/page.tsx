@@ -4,13 +4,13 @@ import staffApi from "@/lib/staffApi";
 import PageHeader from "@/components/admin/PageHeader";
 
 const VOUCHER_COLORS: Record<string, { bg: string; color: string }> = {
-  sales_invoice:    { bg: "#dbeafe", color: "#1d4ed8" },
-  sales_return:     { bg: "#fef9c3", color: "#854d0e" },
+  sales_invoice: { bg: "#dbeafe", color: "#1d4ed8" },
+  sales_return: { bg: "#fef9c3", color: "#854d0e" },
   purchase_invoice: { bg: "#ede9fe", color: "#6d28d9" },
-  purchase_return:  { bg: "#fce7f3", color: "#9d174d" },
-  receipt:          { bg: "#dcfce7", color: "#166534" },
-  payment:          { bg: "#fee2e2", color: "#991b1b" },
-  journal:          { bg: "#f1f5f9", color: "#475569" },
+  purchase_return: { bg: "#fce7f3", color: "#9d174d" },
+  receipt: { bg: "#dcfce7", color: "#166534" },
+  payment: { bg: "#fee2e2", color: "#991b1b" },
+  journal: { bg: "#f1f5f9", color: "#475569" },
 };
 
 export default function JournalPage() {
@@ -22,6 +22,7 @@ export default function JournalPage() {
   const [toDate, setToDate] = useState("");
   const [voucherType, setVoucherType] = useState("all");
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [jForm, setJForm] = useState({
     voucher_date: new Date().toISOString().split("T")[0],
@@ -52,12 +53,37 @@ export default function JournalPage() {
   const addLine = () => setLines([...lines, { account_code: "", debit: "", credit: "", narration: "" }]);
   const removeLine = (i: number) => lines.length > 2 && setLines(lines.filter((_, idx) => idx !== i));
   const updateLine = (i: number, key: string, val: string) => {
-    setLines(lines.map((l, idx) => idx === i ? { ...l, [key]: val } : l));
+    setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [key]: val } : l));
   };
 
   const totalDebit = lines.reduce((s, l) => s + parseFloat(l.debit || "0"), 0);
   const totalCredit = lines.reduce((s, l) => s + parseFloat(l.credit || "0"), 0);
   const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("Delete this journal entry? This cannot be undone.")) return;
+    try {
+      await staffApi.delete(`/journals/${id}`);
+      load();
+    } catch (e: any) { alert(e.response?.data?.detail || "Failed to delete"); }
+  };
+
+  const handleEdit = (journal: any) => {
+    setEditingId(journal.id);
+    setJForm({
+      voucher_date: journal.voucher_date.split("T")[0],
+      narration: journal.narration || "",
+      reference: journal.reference || "",
+      voucher_type: journal.voucher_type,
+    });
+    setLines((journal.lines || []).map((l: any) => ({
+      account_code: l.account?.code || "",
+      debit: parseFloat(l.debit) > 0 ? String(l.debit) : "",
+      credit: parseFloat(l.credit) > 0 ? String(l.credit) : "",
+      narration: l.narration || "",
+    })));
+    setShowForm(true);
+  };
 
   const saveJournal = async () => {
     if (!jForm.narration) { alert("Narration is required"); return; }
@@ -67,9 +93,8 @@ export default function JournalPage() {
 
     setSaving(true);
     try {
-      await staffApi.post("/journals/", {
+      const body = {
         voucher_date: jForm.voucher_date,
-        voucherType: jForm.voucher_type,
         narration: jForm.narration,
         reference: jForm.reference,
         lines: validLines.map(l => ({
@@ -78,15 +103,20 @@ export default function JournalPage() {
           credit: parseFloat(l.credit || "0"),
           narration: l.narration,
         })),
-      });
+      };
+      if (editingId) {
+        await staffApi.patch(`/journals/${editingId}`, body);
+      } else {
+        await staffApi.post("/journals/", { ...body, voucherType: jForm.voucher_type });
+      }
       setShowForm(false);
+      setEditingId(null);
       setLines([{ account_code: "", debit: "", credit: "", narration: "" }, { account_code: "", debit: "", credit: "", narration: "" }]);
-      setJForm({ voucher_date: new Date().toISOString().split("T")[0], narration: "", reference: "",voucher_type:"" });
+      setJForm({ voucher_date: new Date().toISOString().split("T")[0], narration: "", reference: "", voucher_type: "journal" });
       load();
     } catch (e: any) { alert(e.response?.data?.detail || "Failed to save"); }
     finally { setSaving(false); }
   };
-
   const fmt = (n: any) => parseFloat(n) > 0 ? `₹${parseFloat(n).toLocaleString("en-IN", { minimumFractionDigits: 2 })}` : "—";
   const inp = { padding: "8px 10px", borderRadius: 6, border: "1px solid #e2e8f0", fontSize: 13, fontFamily: "inherit", outline: "none", width: "100%", boxSizing: "border-box" as const };
 
@@ -100,29 +130,29 @@ export default function JournalPage() {
         <div className="card" style={{ padding: 24, marginBottom: 24 }}>
           <h3 style={{ fontSize: 15, fontWeight: 600, margin: "0 0 16px" }}>Manual Journal Entry</h3>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
-  <div>
-    <label style={{ fontSize: 12, color: "#64748b", display: "block", marginBottom: 4 }}>Voucher Type *</label>
-    <select style={inp} value={jForm.voucher_type} onChange={e => setJForm({ ...jForm, voucher_type: e.target.value })}>
-      <option value="journal">Journal</option>
-      <option value="receipt">Receipt</option>
-      <option value="payment">Payment</option>
-      <option value="credit_note">Credit Note</option>
-      <option value="debit_note">Debit Note</option>
-    </select>
-  </div>
-  <div>
-    <label style={{ fontSize: 12, color: "#64748b", display: "block", marginBottom: 4 }}>Date *</label>
-    <input type="date" style={inp} value={jForm.voucher_date} onChange={e => setJForm({ ...jForm, voucher_date: e.target.value })} />
-  </div>
-  <div>
-    <label style={{ fontSize: 12, color: "#64748b", display: "block", marginBottom: 4 }}>Reference</label>
-    <input style={inp} value={jForm.reference} onChange={e => setJForm({ ...jForm, reference: e.target.value })} placeholder="Eg: Bank stmt ref" />
-  </div>
-  <div>
-    <label style={{ fontSize: 12, color: "#64748b", display: "block", marginBottom: 4 }}>Narration *</label>
-    <input style={inp} value={jForm.narration} onChange={e => setJForm({ ...jForm, narration: e.target.value })} placeholder="Purpose of entry" />
-  </div>
-</div>
+            <div>
+              <label style={{ fontSize: 12, color: "#64748b", display: "block", marginBottom: 4 }}>Voucher Type *</label>
+              <select style={inp} value={jForm.voucher_type} onChange={e => setJForm({ ...jForm, voucher_type: e.target.value })}>
+                <option value="journal">Journal</option>
+                <option value="receipt">Receipt</option>
+                <option value="payment">Payment</option>
+                <option value="credit_note">Credit Note</option>
+                <option value="debit_note">Debit Note</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, color: "#64748b", display: "block", marginBottom: 4 }}>Date *</label>
+              <input type="date" style={inp} value={jForm.voucher_date} onChange={e => setJForm({ ...jForm, voucher_date: e.target.value })} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, color: "#64748b", display: "block", marginBottom: 4 }}>Reference</label>
+              <input style={inp} value={jForm.reference} onChange={e => setJForm({ ...jForm, reference: e.target.value })} placeholder="Eg: Bank stmt ref" />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, color: "#64748b", display: "block", marginBottom: 4 }}>Narration *</label>
+              <input style={inp} value={jForm.narration} onChange={e => setJForm({ ...jForm, narration: e.target.value })} placeholder="Purpose of entry" />
+            </div>
+          </div>
 
           {/* Lines */}
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 12 }}>
@@ -138,11 +168,11 @@ export default function JournalPage() {
                 <tr key={i} style={{ borderBottom: "1px solid #f1f5f9" }}>
                   <td style={{ padding: "6px 6px", minWidth: 200 }}>
                     <select style={inp} value={line.account_code} onChange={e => updateLine(i, "account_code", e.target.value)}>
-  <option value="">Select account</option>
-  {accounts.map((a: any) => (
-    <option key={a.id} value={a.code}>{a.code} — {a.name}</option>
-  ))}
-</select>
+                      <option value="">Select account</option>
+                      {accounts.map((a: any) => (
+                        <option key={a.id} value={a.code}>{a.code} — {a.name}</option>
+                      ))}
+                    </select>
                   </td>
                   <td style={{ padding: "6px 6px" }}>
                     <input style={inp} value={line.narration} onChange={e => updateLine(i, "narration", e.target.value)} placeholder="Line note" />
@@ -185,6 +215,9 @@ export default function JournalPage() {
             <button onClick={() => setShowForm(false)} className="btn-outline">Cancel</button>
           </div>
         </div>
+
+
+
       )}
 
       {/* Filters */}
@@ -238,6 +271,19 @@ export default function JournalPage() {
                     onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")}
                     onMouseLeave={e => (e.currentTarget.style.background = "white")}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                        <span style={{ fontSize: 13, color: "#64748b" }}>{new Date(journal.voucher_date).toLocaleDateString("en-IN")}</span>
+                        <span style={{ fontSize: 14, fontWeight: 600 }}>₹{totalDr.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                        <button onClick={(e) => { e.stopPropagation(); handleEdit(journal); }}
+                          style={{ fontSize: 12, padding: "4px 10px", borderRadius: 6, border: "1px solid #e2e8f0", background: "white", cursor: "pointer" }}>
+                          Edit
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDelete(journal.id); }}
+                          style={{ fontSize: 12, padding: "4px 10px", borderRadius: 6, border: "1px solid #fecaca", background: "#fef2f2", color: "#dc2626", cursor: "pointer" }}>
+                          Delete
+                        </button>
+                        <span style={{ fontSize: 16, color: "#94a3b8", transform: isExp ? "rotate(180deg)" : "none", transition: "transform 0.2s", display: "inline-block" }}>▾</span>
+                      </div>
                       <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 4, background: c.bg, color: c.color, textTransform: "uppercase", whiteSpace: "nowrap" }}>
                         {journal.voucher_type.replace(/_/g, " ")}
                       </span>

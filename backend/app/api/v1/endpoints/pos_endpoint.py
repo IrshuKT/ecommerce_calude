@@ -38,6 +38,14 @@ async def resolve_users_id(db: AsyncSession, current_user) -> Optional[int]:
     result = await db.execute(select(User).where(User.id == user_id))
     return user_id if result.scalar_one_or_none() else None
 
+def calc_line_tax(line_total: Decimal, gst_rate: Decimal) -> tuple[Decimal, Decimal]:
+    """retail_price/line_total is tax-inclusive. Back-calculates the
+    taxable value and tax portion. Returns (taxable_value, tax_amount)."""
+    rate = gst_rate / Decimal("100")
+    taxable_value = (line_total / (1 + rate)).quantize(Decimal("0.01"))
+    tax_amount = line_total - taxable_value
+    return taxable_value, tax_amount
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PRODUCT LOOKUP — for the POS screen
@@ -131,6 +139,7 @@ class POSSalePayload(BaseModel):
     notes: Optional[str] = None
     customer_id: Optional[int] = None
     walk_in_name: Optional[str] = None
+    gstin: Optional[str] = None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -199,18 +208,28 @@ async def create_pos_sale(
 
     internal_user_id = await resolve_internal_user_id(db, current_user)
 
+    discount_ratio = (payload.discount_amount / subtotal) if subtotal > 0 else Decimal("0")
+    total_tax = Decimal("0")
+    for line in computed_items:
+        gst_rate = line["variant"].product.gst_rate
+        _, tax_amt = calc_line_tax(line["line_total"], gst_rate)
+        total_tax += tax_amt
+    tax_amount = (total_tax * (1 - discount_ratio)).quantize(Decimal("0.01"))
+    cgst_amount = sgst_amount = (tax_amount / 2).quantize(Decimal("0.01"))
+
     sale = POSSale(
-        sale_number=await next_sale_number(db),
-        subtotal=subtotal,
-        discount_amount=payload.discount_amount,
-        tax_amount=Decimal("0"),
-        total_amount=total_amount,
-        status=POSSaleStatus.completed,
-        cashier_id=internal_user_id,
-        customer_id=payload.customer_id,
-        walk_in_name=payload.walk_in_name,
-        notes=payload.notes,
-    )
+    sale_number=await next_sale_number(db),
+    subtotal=subtotal,
+    discount_amount=payload.discount_amount,
+    tax_amount=tax_amount,
+    total_amount=total_amount,
+    gstin=payload.gstin,
+    status=POSSaleStatus.completed,
+    cashier_id=internal_user_id,
+    customer_id=payload.customer_id,
+    walk_in_name=payload.walk_in_name,
+    notes=payload.notes,
+)
     db.add(sale)
     await db.flush()
 
@@ -243,9 +262,9 @@ async def create_pos_sale(
     journal = await post_pos_sale_journal(
         db, sale,
         [{"method": p.method, "amount": p.amount} for p in payload.payments],
+        cgst_amount=cgst_amount, sgst_amount=sgst_amount,
         created_by_user_id=users_id,
     )
-    sale.journal_id = journal.id
 
     await db.commit()
     await db.refresh(sale)
@@ -260,6 +279,7 @@ async def create_pos_sale(
     return {
         "id": sale.id, "sale_number": sale.sale_number,
         "subtotal": float(sale.subtotal), "discount_amount": float(sale.discount_amount),
+        "tax_amount": float(sale.tax_amount),
         "total_amount": float(sale.total_amount), "status": sale.status,
         "customer_id": sale.customer_id, "walk_in_name": sale.walk_in_name,
         "customer_display_name": customer_display_name,
@@ -311,6 +331,8 @@ async def _finalize_sale(
     payments_payload: List[POSPaymentPayload],
     internal_user_id: Optional[int],
     users_id: Optional[int],
+    cgst_amount: Decimal,
+    sgst_amount: Decimal,
 ):
     """Runs stock check, stock deduction, payment rows, and journal posting
     for a sale that's about to become `completed`. Assumes sale.subtotal,
@@ -355,6 +377,7 @@ async def _finalize_sale(
     journal = await post_pos_sale_journal(
         db, sale,
         [{"method": p.method, "amount": p.amount} for p in payments_payload],
+        cgst_amount=cgst_amount, sgst_amount=sgst_amount,
         created_by_user_id=users_id,
     )
     sale.journal_id = journal.id
@@ -373,6 +396,7 @@ class POSHeldCheckoutPayload(BaseModel):
     discount_amount: Decimal = Decimal("0")
     customer_id: Optional[int] = None
     walk_in_name: Optional[str] = None
+    gstin: Optional[str] = None
 
 
 @router.post("/sales/hold", status_code=201)
@@ -608,17 +632,28 @@ async def checkout_held_sale(
             quantity=item.quantity, unit_price=unit_price, line_total=line_total,
         ))
 
+    # ── Tax breakup (inclusive pricing, discount applied proportionally) ──
+    discount_ratio = (payload.discount_amount / subtotal) if subtotal > 0 else Decimal("0")
+    total_tax = Decimal("0")
+    for line in computed_items:
+        gst_rate = line["variant"].product.gst_rate
+        _, tax_amt = calc_line_tax(line["line_total"], gst_rate)
+        total_tax += tax_amt
+    tax_amount = (total_tax * (1 - discount_ratio)).quantize(Decimal("0.01"))
+    cgst_amount = sgst_amount = (tax_amount / 2).quantize(Decimal("0.01"))
+
     sale.subtotal = subtotal
     sale.discount_amount = payload.discount_amount
+    sale.tax_amount = tax_amount
     sale.total_amount = subtotal - payload.discount_amount
     sale.customer_id = payload.customer_id
     sale.walk_in_name = payload.walk_in_name
+    sale.gstin = payload.gstin
 
     internal_user_id = await resolve_internal_user_id(db, current_user)
     users_id = await resolve_users_id(db, current_user)
 
-    await _finalize_sale(db, sale, computed_items, payload.payments, internal_user_id, users_id)
-
+    await _finalize_sale(db, sale, computed_items, payload.payments, internal_user_id, users_id, cgst_amount, sgst_amount)
     await db.commit()
     await db.refresh(sale)
 
@@ -664,7 +699,9 @@ async def get_pos_sale(
         raise HTTPException(404, "POS sale not found")
     return {
         "id": sale.id, "sale_number": sale.sale_number, "subtotal": float(sale.subtotal),
-        "discount_amount": float(sale.discount_amount), "total_amount": float(sale.total_amount),
+        "discount_amount": float(sale.discount_amount), "tax_amount": float(sale.tax_amount),
+        "gstin": sale.gstin,
+        "total_amount": float(sale.total_amount),
         "status": sale.status, "created_at": sale.created_at.isoformat(),
         "customer_display_name": sale.customer.name if sale.customer else (sale.walk_in_name or "Cash Customer"),
         "items": [

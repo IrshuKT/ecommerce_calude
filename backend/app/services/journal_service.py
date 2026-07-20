@@ -54,6 +54,7 @@ async def jnl_number(db):   return await get_next_number(db, "JNL", "JNL")
 async def cn_number(db):    return await get_next_number(db, "CN", "CN")
 async def dn_number(db):    return await get_next_number(db, "DN", "DN")
 async def pr_number(db):    return await get_next_number(db, "PRR", "PRR")
+async def vnd_number(db): return await get_next_number(db, "VND", "VND")
 
 
 async def get_account(db: AsyncSession, code: str) -> Account:
@@ -85,10 +86,15 @@ async def post_journal(db, voucher_type, voucher_date, lines, reference=None, na
                            customer_id=line.get("customer_id")))
     return journal
 
-async def post_pos_sale_journal(db, sale, payments, created_by_user_id=None):
-    """Debits each payment method's account (cash/card/upi), credits Sales.
+async def post_pos_sale_journal(db, sale, payments, cgst_amount=None, sgst_amount=None, created_by_user_id=None):
+    """Debits each payment method's account (cash/card/upi), credits
+    Sales for the taxable portion and Output CGST/SGST for the tax portion.
     POS sales are immediate cash transactions with no receivable involved,
     unlike post_sales_invoice_journal which debits Accounts Receivable (1200)."""
+    cgst_amount = cgst_amount or Decimal("0")
+    sgst_amount = sgst_amount or Decimal("0")
+    taxable_amount = sale.total_amount - cgst_amount - sgst_amount
+
     lines = []
     for p in payments:
         account = await get_account(db, _payment_mode_account(p["method"]))
@@ -99,16 +105,19 @@ async def post_pos_sale_journal(db, sale, payments, created_by_user_id=None):
         })
     lines.append({
         "account_code": "4000",
-        "credit": float(sale.total_amount),
+        "credit": float(taxable_amount),
         "narration": f"POS sale {sale.sale_number}",
     })
+    if cgst_amount:
+        lines.append({"account_code": "2100", "credit": float(cgst_amount), "narration": "CGST on POS sale"})
+    if sgst_amount:
+        lines.append({"account_code": "2200", "credit": float(sgst_amount), "narration": "SGST on POS sale"})
+
     return await post_journal(
         db, VoucherType.pos_sale, sale.created_at.date(), lines,
         reference=sale.sale_number, narration=f"POS sale {sale.sale_number}",
         created_by_id=created_by_user_id,
     )
-
-
 
 def _payment_mode_account(mode: str) -> str:
     return {"cash": "1010", "cod": "1010", "upi": "1020",

@@ -30,6 +30,7 @@ type ReceiptData = {
   sale_number: string;
   subtotal: number;
   discount_amount: number;
+  tax_amount: number;
   total_amount: number;
   customer_display_name: string;
   items: { product_name: string; sku: string; quantity: number; unit_price: number; line_total: number }[];
@@ -407,13 +408,16 @@ export default function POSPage() {
               ))}
             </tbody>
           </table>
-          <div className="space-y-1 text-sm mb-4">
-            <div className="flex justify-between"><span>Subtotal</span><span>{receipt.subtotal.toFixed(2)}</span></div>
-            <div className="flex justify-between"><span>Discount</span><span>-{receipt.discount_amount.toFixed(2)}</span></div>
-            <div className="flex justify-between font-semibold text-base border-t pt-1">
-              <span>Total</span><span>{receipt.total_amount.toFixed(2)}</span>
-            </div>
-          </div>
+       <div className="space-y-1 text-sm mb-4">
+  <div className="flex justify-between"><span>Subtotal</span><span>{receipt.subtotal.toFixed(2)}</span></div>
+  {receipt.discount_amount > 0 && (
+    <div className="flex justify-between"><span>Discount</span><span>-{receipt.discount_amount.toFixed(2)}</span></div>
+  )}
+  <div className="flex justify-between"><span>Tax (incl.)</span><span>{(receipt.tax_amount ?? 0).toFixed(2)}</span></div>
+  <div className="flex justify-between font-semibold text-base border-t pt-1">
+    <span>Total</span><span>{receipt.total_amount.toFixed(2)}</span>
+  </div>
+</div>
           <div className="text-sm mb-6">
             <div className="text-gray-500 mb-1">Payment</div>
             {receipt.payments.map((p, idx) => (
@@ -567,18 +571,27 @@ export default function POSPage() {
       <div className="border rounded-lg p-5 h-fit space-y-4">
         <h3 className="font-semibold text-lg">Summary</h3>
 
-        <div className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
-          <div>
-            <div className="text-xs text-gray-400">Customer</div>
-            <div className="font-medium text-sm">{customerDisplayName}</div>
-          </div>
-          <button
-            onClick={() => setShowCustomerModal(true)}
-            className="text-blue-600 text-sm font-medium"
-          >
-            Change
-          </button>
-        </div>
+        <div className="bg-gray-50 rounded-lg px-3 py-2">
+  <div className="text-xs text-gray-400 mb-1">Customer</div>
+  {selectedCustomer ? (
+    <div className="flex items-center justify-between">
+      <span className="font-medium text-sm">{selectedCustomer.name}</span>
+      <button onClick={resetToCashCustomer} className="text-blue-600 text-sm">Change</button>
+    </div>
+  ) : (
+    <div className="flex items-center justify-between gap-2">
+      <input
+        value={walkInName}
+        onChange={(e) => setWalkInName(e.target.value)}
+        placeholder="Cash Customer"
+        className="flex-1 bg-transparent outline-none font-medium text-sm border-b border-transparent focus:border-blue-400"
+      />
+      <button onClick={() => setShowCustomerModal(true)} className="text-blue-600 text-sm whitespace-nowrap">
+        Pick registered
+      </button>
+    </div>
+  )}
+</div>
 
         <div className="flex justify-between text-sm">
           <span>Subtotal</span>
