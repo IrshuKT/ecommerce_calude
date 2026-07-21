@@ -213,3 +213,39 @@ async def get_account_balance(db, account_code, as_of_date=None):
     dr, cr = Decimal(str(row.dr)), Decimal(str(row.cr))
     balance = (dr - cr) if account.account_type in ("asset", "expense") else (cr - dr)
     return {"account_code": account_code, "account_name": account.name, "account_type": account.account_type, "total_debit": dr, "total_credit": cr, "balance": balance}
+
+
+_WALLET_ACCOUNT = {"jio": "1401", "airtel": "1402", "vi": "1403", "bsnl": "1404"}
+_COMMISSION_ACCOUNT = {"jio": "4201", "airtel": "4202", "vi": "4203", "bsnl": "4204"}
+
+
+async def post_recharge_entry_journal(db, entry, created_by_user_id=None):
+    lines = [
+        {"account_code": "1010", "debit": float(entry.amount), "narration": f"Recharge - {entry.operator}"},
+        {"account_code": _WALLET_ACCOUNT[entry.operator], "credit": float(entry.amount), "narration": f"Wallet used - {entry.operator}"},
+    ]
+    return await post_journal(db, VoucherType.journal, entry.entry_date, lines,
+                               reference=f"RCH-{entry.id}", narration=f"{entry.operator} recharge",
+                               created_by_id=created_by_user_id)
+
+
+async def post_wallet_topup_journal(db, topup, created_by_user_id=None):
+    pay_account = await get_account(db, _payment_mode_account(topup.payment_mode))
+    lines = [
+        {"account_code": _WALLET_ACCOUNT[topup.operator], "debit": float(topup.amount), "narration": f"Wallet topup - {topup.operator}"},
+        {"account_code": pay_account.code, "credit": float(topup.amount), "narration": f"Paid - {topup.operator} topup"},
+    ]
+    return await post_journal(db, VoucherType.journal, topup.topup_date, lines,
+                               reference=f"TOPUP-{topup.id}", narration=f"{topup.operator} wallet topup",
+                               created_by_id=created_by_user_id)
+
+
+async def post_recharge_commission_journal(db, commission, created_by_user_id=None):
+    pay_account = await get_account(db, _payment_mode_account(commission.payment_mode))
+    lines = [
+        {"account_code": pay_account.code, "debit": float(commission.amount), "narration": f"Commission - {commission.operator}"},
+        {"account_code": _COMMISSION_ACCOUNT[commission.operator], "credit": float(commission.amount), "narration": f"{commission.operator} commission"},
+    ]
+    return await post_journal(db, VoucherType.journal, commission.received_date, lines,
+                               reference=f"COMM-{commission.id}", narration=f"{commission.operator} commission received",
+                               created_by_id=created_by_user_id)

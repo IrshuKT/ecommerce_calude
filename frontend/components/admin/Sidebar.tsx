@@ -70,6 +70,7 @@ const reportGroups: { group: string; icon: string; items: { key: string; label: 
 const nav = [
   { key: "dashboard",  label: "Dashboard",  href: "/admin",           icon: "▦" },
   { key: "pos",        label: "POS Sale",   href: "/admin/pos",       icon: "🧾", expandable: true },
+    { key: "recharge",   label: "Recharge",   href: "/admin/recharge",  icon: "📱" },
   { key: "products",   label: "Products",   href: "/admin/products",   icon: "🪟" },
   { key: "orders",     label: "Orders",     href: "/admin/orders",     icon: "📦" },
   { key: "customers",  label: "Customers",  href: "/admin/customers",  icon: "👥" },

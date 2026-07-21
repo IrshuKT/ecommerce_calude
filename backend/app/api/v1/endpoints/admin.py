@@ -18,9 +18,9 @@ router = APIRouter()
 
 # Menus available per role, matching the actual sidebar sections
 ROLE_MENUS: dict[str, list[str]] = {
-    "admin":     ["dashboard", "products", "orders", "customers", "vendors", "accounting", "reports", "coupons", "settings", "users","pos"],
-    "manager":   ["dashboard", "products", "orders", "customers", "vendors", "accounting", "reports", "coupons", "users","pos"],
-    "sales":     ["dashboard", "orders", "customers","pos"],
+    "admin":     ["dashboard", "products", "orders", "customers", "vendors", "accounting", "reports", "coupons", "settings", "users", "pos", "recharge"],
+    "manager":   ["dashboard", "products", "orders", "customers", "vendors", "accounting", "reports", "coupons", "users", "pos", "recharge"],
+    "sales":     ["dashboard", "orders", "customers", "pos", "recharge"],
     "inventory": ["dashboard", "products", "vendors"],
 }
 
