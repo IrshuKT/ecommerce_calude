@@ -1,4 +1,4 @@
-# GlassStore — Indian Glass E-Commerce
+# Epozy App — Indian Glass E-Commerce
 
 FastAPI backend + Next.js frontend for Indian glass materials store.
 
